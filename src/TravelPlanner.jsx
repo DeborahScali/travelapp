@@ -392,55 +392,49 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {} }) => {
       return { distance: '', time: '', error: 'API key not set' };
     }
 
+    setCalculatingDistance(true);
+
     try {
-      setCalculatingDistance(true);
-      
+      await waitForGoogleMaps();
+
       // Map our transport modes to Google Maps travel modes
       const travelModeMap = {
-        'walking': 'walking',
-        'metro': 'transit',
-        'bus': 'transit',
-        'train': 'transit',
-        'car': 'driving',
-        'other': 'driving'
+        walking: 'walking',
+        metro: 'transit',
+        bus: 'transit',
+        train: 'transit',
+        car: 'driving',
+        other: 'driving'
       };
-      
       const travelMode = travelModeMap[mode] || 'walking';
-      
-      const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${encodeURIComponent(origin)}&destinations=${encodeURIComponent(destination)}&mode=${travelMode}&key=${mapsApiKey}`;
-      
-      // Note: Due to CORS restrictions, we need to use a proxy or backend
-      // For now, we'll use the Directions API with JSONP callback
-      const directionsUrl = `https://maps.googleapis.com/maps/api/directions/json?origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}&mode=${travelMode}&key=${mapsApiKey}`;
-      
-      // Since we can't directly call the API from the browser due to CORS,
-      // we'll use the JavaScript API instead
-      return await new Promise((resolve) => {
-        if (window.google && window.google.maps) {
-          const service = new window.google.maps.DistanceMatrixService();
-          service.getDistanceMatrix(
-            {
-              origins: [origin],
-              destinations: [destination],
-              travelMode: travelMode.toUpperCase(),
-            },
-            (response, status) => {
-              setCalculatingDistance(false);
-              if (status === 'OK' && response.rows[0].elements[0].status === 'OK') {
-                const element = response.rows[0].elements[0];
-                const distanceKm = (element.distance.value / 1000).toFixed(1);
-                const timeMin = Math.round(element.duration.value / 60);
-                resolve({ distance: distanceKm, time: timeMin, error: null });
-              } else {
-                resolve({ distance: '', time: '', error: 'Could not calculate route' });
-              }
-            }
-          );
-        } else {
-          setCalculatingDistance(false);
-          resolve({ distance: '', time: '', error: 'Google Maps not loaded' });
+
+      const matrixResult = await new Promise((resolve, reject) => {
+        if (!window.google?.maps) {
+          return reject(new Error('Google Maps not loaded'));
         }
+
+        const service = new window.google.maps.DistanceMatrixService();
+        service.getDistanceMatrix(
+          {
+            origins: [origin],
+            destinations: [destination],
+            travelMode: travelMode.toUpperCase(),
+          },
+          (response, status) => {
+            if (status === 'OK' && response.rows[0].elements[0].status === 'OK') {
+              const element = response.rows[0].elements[0];
+              const distanceKm = (element.distance.value / 1000).toFixed(1);
+              const timeMin = Math.round(element.duration.value / 60);
+              resolve({ distance: distanceKm, time: timeMin, error: null });
+            } else {
+              reject(new Error('Could not calculate route'));
+            }
+          }
+        );
       });
+
+      setCalculatingDistance(false);
+      return matrixResult;
     } catch (error) {
       setCalculatingDistance(false);
       return { distance: '', time: '', error: error.message };
@@ -452,8 +446,28 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {} }) => {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const markersRef = useRef([]);
-  const [showMapPanel, setShowMapPanel] = useState(false);
+  const [showMapPanel, setShowMapPanel] = useState(true);
   const [mapLoading, setMapLoading] = useState(false);
+
+  const waitForGoogleMaps = () => {
+    if (mapsReady && window.google?.maps) {
+      return Promise.resolve();
+    }
+
+    return new Promise((resolve, reject) => {
+      let attempts = 0;
+      const poll = setInterval(() => {
+        if (window.google?.maps) {
+          clearInterval(poll);
+          setMapsReady(true);
+          resolve();
+        } else if (attempts++ > 30) {
+          clearInterval(poll);
+          reject(new Error('Google Maps failed to load'));
+        }
+      }, 200);
+    });
+  };
 
   // Load Google Maps API
   useEffect(() => {
@@ -1091,7 +1105,10 @@ const parseLocalDate = (value) => {
             <div className="grid lg:grid-cols-[2fr_1fr] gap-4 items-start">
               <div className="space-y-6">
                 <div className="flex items-center justify-between flex-wrap gap-3">
-                  <div className="text-sm font-semibold text-gray-700">Plan your days</div>
+                  <div>
+                    <div className="text-sm font-semibold text-gray-700">Plan your days</div>
+                    <p className="text-xs text-gray-500">New stops appear on the map to the right.</p>
+                  </div>
                   <button
                     onClick={() => setShowMapPanel(prev => !prev)}
                     className="px-3 py-2 text-sm font-semibold rounded-lg border border-gray-200 hover:border-[#4ECDC4] hover:text-[#4ECDC4] transition-colors"
