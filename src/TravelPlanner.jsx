@@ -71,10 +71,14 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {} }) => {
   const [showAddPlace, setShowAddPlace] = useState(false);
   const [showAddExpense, setShowAddExpense] = useState(false);
   const [selectedDay, setSelectedDay] = useState(null);
-  const initialMapsKey = (import.meta?.env?.VITE_GOOGLE_MAPS_API_KEY || '').trim();
+  // Temporarily hardcode the API key since env vars aren't loading
+  const initialMapsKey = 'AIzaSyBFY-pyT3UnUN5bWc_G82xltZ7bqxInCo0';
   const [googleMapsApiKey, setGoogleMapsApiKey] = useState(initialMapsKey);
   const [showApiKeyModal, setShowApiKeyModal] = useState(false);
   const [calculatingDistance, setCalculatingDistance] = useState(false);
+  const [placeSearchTerm, setPlaceSearchTerm] = useState('');
+  const [placeSuggestions, setPlaceSuggestions] = useState([]);
+  const [placeSearchLoading, setPlaceSearchLoading] = useState(false);
   const [citySearchTerm, setCitySearchTerm] = useState('');
   const [countrySearchTerm, setCountrySearchTerm] = useState('');
   const [showCitySuggestions, setShowCitySuggestions] = useState(false);
@@ -226,6 +230,8 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {} }) => {
   const [placeForm, setPlaceForm] = useState({
     name: '',
     address: '',
+    placeId: '',
+    location: null,
     notes: '',
     transportMode: 'walking',
     transportTime: '',
@@ -278,8 +284,8 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {} }) => {
     if (selectedDayData && selectedDayData.places.length > 0 && mapsApiKey) {
       const previousPlace = selectedDayData.places[selectedDayData.places.length - 1];
       const result = await calculateDistanceAndTime(
-        previousPlace.address,
-        placeForm.address,
+        previousPlace.location || previousPlace.address,
+        placeForm.location || placeForm.address,
         placeForm.transportMode
       );
       
@@ -296,8 +302,8 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {} }) => {
       if (day.id === selectedDay) {
         return {
           ...day,
-          places: [...day.places, { id: Date.now(), ...finalPlaceForm }]
-        };
+        places: [...day.places, { id: Date.now(), ...finalPlaceForm }]
+      };
       }
       return day;
     });
@@ -305,6 +311,8 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {} }) => {
     setPlaceForm({
       name: '',
       address: '',
+      placeId: '',
+      location: null,
       notes: '',
       transportMode: 'walking',
       transportTime: '',
@@ -387,6 +395,13 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {} }) => {
     setDailyPlans(updatedPlans);
   };
 
+  const normalizeLatLng = (value) => {
+    if (value && typeof value === 'object' && typeof value.lat === 'number' && typeof value.lng === 'number') {
+      return new window.google.maps.LatLng(value.lat, value.lng);
+    }
+    return value;
+  };
+
   const calculateDistanceAndTime = async (origin, destination, mode) => {
     if (!mapsApiKey) {
       return { distance: '', time: '', error: 'API key not set' };
@@ -414,10 +429,12 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {} }) => {
         }
 
         const service = new window.google.maps.DistanceMatrixService();
+        const normalizedOrigin = normalizeLatLng(origin);
+        const normalizedDestination = normalizeLatLng(destination);
         service.getDistanceMatrix(
           {
-            origins: [origin],
-            destinations: [destination],
+            origins: [normalizedOrigin],
+            destinations: [normalizedDestination],
             travelMode: travelMode.toUpperCase(),
           },
           (response, status) => {
@@ -446,6 +463,7 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {} }) => {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const markersRef = useRef([]);
+  const directionsRenderersRef = useRef([]);
   const [showMapPanel, setShowMapPanel] = useState(true);
   const [mapLoading, setMapLoading] = useState(false);
 
@@ -467,6 +485,57 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {} }) => {
         }
       }, 200);
     });
+  };
+
+  const fetchPlaceSuggestions = async (query) => {
+    if (!mapsApiKey || !query || query.length < 3) {
+      setPlaceSuggestions([]);
+      return;
+    }
+
+    setPlaceSearchLoading(true);
+    try {
+      await waitForGoogleMaps();
+      const service = new window.google.maps.places.AutocompleteService();
+      service.getPlacePredictions({ input: query }, (predictions, status) => {
+        if (status === window.google.maps.places.PlacesServiceStatus.OK) {
+          setPlaceSuggestions(predictions || []);
+        } else {
+          setPlaceSuggestions([]);
+        }
+        setPlaceSearchLoading(false);
+      });
+    } catch (error) {
+      console.error('Place autocomplete failed:', error);
+      setPlaceSuggestions([]);
+      setPlaceSearchLoading(false);
+    }
+  };
+
+  const handlePlaceSuggestionSelect = async (suggestion) => {
+    try {
+      await waitForGoogleMaps();
+      const service = new window.google.maps.places.PlacesService(mapInstanceRef.current || document.createElement('div'));
+      service.getDetails(
+        { placeId: suggestion.place_id, fields: ['name', 'formatted_address', 'geometry'] },
+        (place, status) => {
+          if (status === window.google.maps.places.PlacesServiceStatus.OK && place) {
+            const location = place.geometry?.location;
+            setPlaceForm({
+              ...placeForm,
+              name: place.name || placeSearchTerm,
+              address: place.formatted_address || placeSearchTerm,
+              placeId: suggestion.place_id,
+              location: location ? { lat: location.lat(), lng: location.lng() } : null
+            });
+            setPlaceSearchTerm(place.name || '');
+            setPlaceSuggestions([]);
+          }
+        }
+      );
+    } catch (error) {
+      console.error('Failed to get place details:', error);
+    }
   };
 
   // Load Google Maps API
@@ -494,63 +563,129 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {} }) => {
   useEffect(() => {
     if (!showMapPanel || !mapsReady || !mapRef.current) return;
     if (!mapInstanceRef.current) {
-      mapInstanceRef.current = new window.google.maps.Map(mapRef.current, {
-        center: { lat: 0, lng: 0 },
-        zoom: 3,
-        mapTypeControl: false,
-        streetViewControl: false,
-        fullscreenControl: false,
-      });
+      try {
+        mapInstanceRef.current = new window.google.maps.Map(mapRef.current, {
+          center: { lat: 46.8182, lng: 8.2275 }, // Center of Switzerland
+          zoom: 7,
+          mapTypeControl: false,
+          streetViewControl: false,
+          fullscreenControl: false,
+        });
+      } catch (error) {
+        console.error('Error creating map instance:', error);
+      }
     }
   }, [showMapPanel, mapsReady]);
 
-  // Clear markers when hiding the map
+  // Clear markers and routes when hiding the map
   useEffect(() => {
     if (showMapPanel) return;
     markersRef.current.forEach(m => m.setMap(null));
     markersRef.current = [];
+    directionsRenderersRef.current.forEach(r => r.setMap(null));
+    directionsRenderersRef.current = [];
   }, [showMapPanel]);
 
-  // Plot markers for places on the selected day
+  // Plot markers and routes for places on the selected day
   useEffect(() => {
     if (!showMapPanel || !mapsReady || !mapInstanceRef.current) return;
     markersRef.current.forEach(m => m.setMap(null));
     markersRef.current = [];
+    directionsRenderersRef.current.forEach(r => r.setMap(null));
+    directionsRenderersRef.current = [];
 
     if (!selectedDayData || !selectedDayData.places?.length) return;
 
-    const geocoder = new window.google.maps.Geocoder();
     const bounds = new window.google.maps.LatLngBounds();
     let cancelled = false;
     setMapLoading(true);
 
-    const geocodePlace = (place) => new Promise(resolve => {
+    const plotPlace = (place, index) => new Promise(resolve => {
+      const position = place.location && typeof place.location.lat === 'number' && typeof place.location.lng === 'number'
+        ? new window.google.maps.LatLng(place.location.lat, place.location.lng)
+        : null;
+
+      const handleMarker = (pos) => {
+        const marker = new window.google.maps.Marker({
+          map: mapInstanceRef.current,
+          position: pos,
+          title: place.name || place.address || 'Place',
+          label: {
+            text: `${index + 1}`,
+            color: 'white',
+            fontSize: '12px',
+            fontWeight: 'bold'
+          }
+        });
+        const info = new window.google.maps.InfoWindow({
+          content: `<div style="max-width:220px"><strong>${place.name || 'Place'}</strong><div style="color:#666;font-size:12px;">${place.address || ''}</div></div>`
+        });
+        marker.addListener('click', () => info.open({ anchor: marker, map: mapInstanceRef.current }));
+        markersRef.current.push(marker);
+        bounds.extend(pos);
+        resolve(pos);
+      };
+
+      if (position) {
+        handleMarker(position);
+        return;
+      }
+
       const target = place.address || place.name;
       if (!target) return resolve(null);
+      const geocoder = new window.google.maps.Geocoder();
       geocoder.geocode({ address: target }, (results, status) => {
         if (cancelled) return resolve(null);
         if (status === 'OK' && results[0]) {
-          const loc = results[0].geometry.location;
-          const marker = new window.google.maps.Marker({
-            map: mapInstanceRef.current,
-            position: loc,
-            title: place.name || place.address || 'Place'
-          });
-          const info = new window.google.maps.InfoWindow({
-            content: `<div style="max-width:220px"><strong>${place.name || 'Place'}</strong><div style="color:#666;font-size:12px;">${place.address || ''}</div></div>`
-          });
-          marker.addListener('click', () => info.open({ anchor: marker, map: mapInstanceRef.current }));
-          markersRef.current.push(marker);
-          bounds.extend(loc);
-          resolve(loc);
+          handleMarker(results[0].geometry.location);
         } else {
           resolve(null);
         }
       });
     });
 
-    Promise.all(selectedDayData.places.map(geocodePlace)).then(() => {
+    Promise.all(selectedDayData.places.map((place, index) => plotPlace(place, index))).then((positions) => {
       if (cancelled) return;
+
+      // Draw routes between consecutive places
+      const validPositions = positions.filter(p => p !== null);
+      if (validPositions.length > 1) {
+        for (let i = 0; i < validPositions.length - 1; i++) {
+          const place = selectedDayData.places[i + 1];
+          const travelModeMap = {
+            walking: 'WALKING',
+            metro: 'TRANSIT',
+            bus: 'TRANSIT',
+            train: 'TRANSIT',
+            car: 'DRIVING',
+            other: 'DRIVING'
+          };
+          const travelMode = travelModeMap[place.transportMode] || 'WALKING';
+
+          const directionsService = new window.google.maps.DirectionsService();
+          const directionsRenderer = new window.google.maps.DirectionsRenderer({
+            map: mapInstanceRef.current,
+            suppressMarkers: true, // We're using our own markers
+            polylineOptions: {
+              strokeColor: '#4ECDC4',
+              strokeWeight: 3,
+              strokeOpacity: 0.7
+            }
+          });
+
+          directionsService.route({
+            origin: validPositions[i],
+            destination: validPositions[i + 1],
+            travelMode: travelMode
+          }, (result, status) => {
+            if (status === 'OK' && !cancelled) {
+              directionsRenderer.setDirections(result);
+              directionsRenderersRef.current.push(directionsRenderer);
+            }
+          });
+        }
+      }
+
       setMapLoading(false);
       if (!bounds.isEmpty()) {
         mapInstanceRef.current.fitBounds(bounds);
@@ -807,8 +942,15 @@ const parseLocalDate = (value) => {
   };
 
   const getRouteInGoogleMaps = (origin, destination) => {
-    const encodedOrigin = encodeURIComponent(origin);
-    const encodedDest = encodeURIComponent(destination);
+    const encodeLocation = (loc) => {
+      if (loc && typeof loc === 'object' && typeof loc.lat === 'number' && typeof loc.lng === 'number') {
+        return `${loc.lat},${loc.lng}`;
+      }
+      return encodeURIComponent(loc || '');
+    };
+
+    const encodedOrigin = encodeLocation(origin);
+    const encodedDest = encodeLocation(destination);
     window.open(`https://www.google.com/maps/dir/?api=1&origin=${encodedOrigin}&destination=${encodedDest}`, '_blank');
   };
 
@@ -1387,10 +1529,31 @@ const parseLocalDate = (value) => {
                       <input
                         type="text"
                         placeholder="Place name *"
-                        value={placeForm.name}
-                        onChange={(e) => setPlaceForm({ ...placeForm, name: e.target.value })}
+                        value={placeSearchTerm || placeForm.name}
+                        onChange={(e) => {
+                          setPlaceSearchTerm(e.target.value);
+                          setPlaceForm({ ...placeForm, name: e.target.value });
+                          fetchPlaceSuggestions(e.target.value);
+                        }}
                         className="w-full px-3 py-2 border rounded-lg"
                       />
+                      {mapsApiKey && placeSuggestions.length > 0 && (
+                        <div className="border rounded-lg divide-y max-h-60 overflow-y-auto">
+                          {placeSuggestions.map((s) => (
+                            <button
+                              key={s.place_id}
+                              onClick={() => handlePlaceSuggestionSelect(s)}
+                              className="w-full text-left px-3 py-2 hover:bg-gray-50"
+                            >
+                              <div className="font-medium text-sm">{s.description}</div>
+                              <div className="text-xs text-gray-500">Google Places</div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      {placeSearchLoading && (
+                        <div className="text-xs text-gray-500">Searching Google Places...</div>
+                      )}
                       <input
                         type="text"
                         placeholder="Address *"
@@ -1409,12 +1572,12 @@ const parseLocalDate = (value) => {
                       <div className="border-t pt-4">
                         <h4 className="font-medium mb-3">Transportation from previous place</h4>
                             {mapsApiKey && selectedDayData && selectedDayData.places.length > 0 && (
-                          <div className="mb-3 p-3 bg-blue-50 rounded-lg text-sm text-blue-700">
-                            ℹ️ Distance and time will be automatically calculated when you add this place
-                          </div>
-                        )}
-                            {!mapsApiKey && selectedDayData && selectedDayData.places.length > 0 && (
-                          <div className="mb-3 p-3 bg-yellow-50 rounded-lg text-sm text-yellow-700">
+                        <div className="mb-3 p-3 bg-blue-50 rounded-lg text-sm text-blue-700">
+                          ℹ️ Distance and time will be automatically calculated when you add this place
+                        </div>
+                      )}
+                          {!mapsApiKey && selectedDayData && selectedDayData.places.length > 0 && (
+                        <div className="mb-3 p-3 bg-yellow-50 rounded-lg text-sm text-yellow-700">
                             ⚠️ Set up Google Maps API to auto-calculate distance and time
                           </div>
                         )}
@@ -1512,37 +1675,36 @@ const parseLocalDate = (value) => {
                   </button>
                 </div>
 
-                {!mapsApiKey && (
-                  <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800">
-                    Add your Google Maps API key in the menu to see places on the map.
-                  </div>
-                )}
-
-                {mapsApiKey && !mapsReady && (
-                  <div className="p-4 text-center text-sm text-gray-500">Loading map...</div>
-                )}
-
-                {mapsApiKey && mapsReady && (
-                  <>
-                    {!selectedDayData?.places?.length ? (
-                      <div className="p-4 text-sm text-gray-500 bg-gray-50 rounded-lg border border-dashed">
+                <div className="relative">
+                  <div
+                    ref={mapRef}
+                    className="w-full h-96 sm:h-[500px] lg:h-[600px] xl:h-[700px] rounded-xl overflow-hidden bg-gray-100"
+                  />
+                  {!mapsApiKey && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-gray-50">
+                      <div className="p-4 text-sm text-gray-500 bg-white rounded-lg border border-dashed">
+                        Google Maps integration active
+                      </div>
+                    </div>
+                  )}
+                  {mapsApiKey && !mapsReady && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-gray-50">
+                      <div className="p-4 text-center text-sm text-gray-500">Loading map...</div>
+                    </div>
+                  )}
+                  {mapLoading && (
+                    <div className="absolute inset-0 bg-white/60 flex items-center justify-center text-sm text-gray-600">
+                      Mapping your stops...
+                    </div>
+                  )}
+                  {mapsReady && !selectedDayData?.places?.length && !mapLoading && (
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                      <div className="p-4 text-sm text-gray-500 bg-white/90 rounded-lg border border-dashed backdrop-blur-sm">
                         Add places to this day to see pins here.
                       </div>
-                    ) : (
-                      <div className="relative">
-                        <div
-                          ref={mapRef}
-                          className="w-full h-72 sm:h-80 lg:h-[500px] rounded-xl overflow-hidden bg-gray-100"
-                        />
-                        {mapLoading && (
-                          <div className="absolute inset-0 bg-white/60 flex items-center justify-center text-sm text-gray-600">
-                            Mapping your stops...
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </>
-                )}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>
