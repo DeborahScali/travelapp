@@ -8,8 +8,50 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', 'Segoe UI', 'Roboto', 'Helvetica', 'Arial', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  background: #F8F9FA;
 }
 
 * {
   box-sizing: border-box;
+}
+
+/* Custom Travel-Themed Color Palette */
+:root {
+  --color-primary: #FF6B6B;
+  --color-primary-dark: #E85555;
+  --color-primary-light: #FF8E8E;
+  --color-secondary: #4ECDC4;
+  --color-secondary-dark: #3BB5AC;
+  --color-secondary-light: #6FD9D1;
+  --color-accent: #FFE66D;
+  --color-accent-dark: #F7D84F;
+  --color-success: #26DE81;
+  --color-success-light: #A8E6CF;
+}
+
+/* Gradient backgrounds */
+.gradient-sunset {
+  background: linear-gradient(135deg, #FF6B6B 0%, #FF8E53 50%, #FFA94D 100%);
+}
+
+.gradient-ocean {
+  background: linear-gradient(135deg, #4ECDC4 0%, #44A08D 100%);
+}
+
+.gradient-warm {
+  background: linear-gradient(135deg, #FFE66D 0%, #FFBE5C 100%);
+}
+
+.gradient-header {
+  background: linear-gradient(135deg, #FF6B6B 0%, #FF8E53 40%, #4ECDC4 100%);
+}
+
+/* Hover effects */
+.card-hover {
+  transition: all 0.3s ease;
+}
+
+.card-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 24px -10px rgba(255, 107, 107, 0.3);
 }

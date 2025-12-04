@@ -136,6 +136,15 @@ export const AuthProvider = ({ children }) => {
         }, { merge: true });
       }
 
+      // Mark that user just logged in so the app can show the setup flow
+      try {
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('showSetupOnLogin', '1');
+        }
+      } catch (err) {
+        console.warn('Could not set showSetupOnLogin flag in localStorage', err);
+      }
+
       return result;
     } catch (error) {
       console.error('Error signing in with Google:', error);
@@ -145,6 +154,7 @@ export const AuthProvider = ({ children }) => {
       setLoading(false);
     }
   };
+
 
   // Sign out
   const signOut = async () => {

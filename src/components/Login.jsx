@@ -21,15 +21,15 @@ const Login = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-[#F8F9FA] flex items-center justify-center p-4">
       <div className="max-w-md w-full">
         {/* Logo and Title */}
         <div className="text-center mb-8">
           <div className="flex items-center justify-center gap-3 mb-4">
-            <div className="bg-blue-600 p-3 rounded-2xl">
+            <div className="bg-gradient-to-br from-[#4ECDC4] to-[#44A08D] p-3 rounded-2xl shadow-lg">
               <Plane className="w-8 h-8 text-white" />
             </div>
-            <div className="bg-indigo-600 p-3 rounded-2xl">
+            <div className="bg-gradient-to-br from-[#FF6B6B] to-[#FF8E53] p-3 rounded-2xl shadow-lg">
               <MapPin className="w-8 h-8 text-white" />
             </div>
           </div>
@@ -38,7 +38,7 @@ const Login = () => {
         </div>
 
         {/* Login Card */}
-        <div className="bg-white rounded-3xl shadow-xl p-8">
+        <div className="bg-white rounded-3xl shadow-xl p-8 border-2 border-gray-50">
           <h2 className="text-2xl font-semibold text-gray-900 mb-2 text-center">
             Welcome!
           </h2>
@@ -48,7 +48,7 @@ const Login = () => {
 
           {/* Error Message */}
           {(error || localError) && (
-            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl flex items-start gap-3">
+            <div className="mb-6 p-4 bg-gradient-to-r from-red-50 to-red-50/50 border-2 border-red-200 rounded-xl flex items-start gap-3">
               <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
               <div className="flex-1">
                 <p className="text-sm text-red-800 font-medium">Sign in failed</p>
@@ -63,11 +63,11 @@ const Login = () => {
           <button
             onClick={handleGoogleSignIn}
             disabled={isLoading}
-            className="w-full bg-white border-2 border-gray-300 hover:border-gray-400 text-gray-700 font-semibold py-4 px-6 rounded-xl transition-all duration-200 flex items-center justify-center gap-3 hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full bg-white border-2 border-gray-300 hover:border-[#4ECDC4] text-gray-700 font-semibold py-4 px-6 rounded-xl transition-all duration-200 flex items-center justify-center gap-3 hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isLoading ? (
               <>
-                <div className="w-5 h-5 border-2 border-gray-300 border-t-blue-600 rounded-full animate-spin"></div>
+                <div className="w-5 h-5 border-2 border-gray-300 border-t-[#4ECDC4] rounded-full animate-spin"></div>
                 <span>Signing in...</span>
               </>
             ) : (
@@ -102,20 +102,20 @@ const Login = () => {
             </p>
             <ul className="space-y-3">
               <li className="flex items-start gap-3 text-sm text-gray-600">
-                <div className="w-5 h-5 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <div className="w-2 h-2 rounded-full bg-blue-600"></div>
+                <div className="w-5 h-5 rounded-full bg-gradient-to-br from-[#4ECDC4]/20 to-[#4ECDC4]/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <div className="w-2 h-2 rounded-full bg-[#4ECDC4]"></div>
                 </div>
                 <span>Access your trips from any device</span>
               </li>
               <li className="flex items-start gap-3 text-sm text-gray-600">
-                <div className="w-5 h-5 rounded-full bg-indigo-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <div className="w-2 h-2 rounded-full bg-indigo-600"></div>
+                <div className="w-5 h-5 rounded-full bg-gradient-to-br from-[#FF6B6B]/20 to-[#FF6B6B]/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <div className="w-2 h-2 rounded-full bg-[#FF6B6B]"></div>
                 </div>
                 <span>Never lose your travel data</span>
               </li>
               <li className="flex items-start gap-3 text-sm text-gray-600">
-                <div className="w-5 h-5 rounded-full bg-purple-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <div className="w-2 h-2 rounded-full bg-purple-600"></div>
+                <div className="w-5 h-5 rounded-full bg-gradient-to-br from-[#FFE66D]/20 to-[#FFE66D]/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <div className="w-2 h-2 rounded-full bg-[#F7B731]"></div>
                 </div>
                 <span>Plan trips seamlessly across phone and desktop</span>
               </li>

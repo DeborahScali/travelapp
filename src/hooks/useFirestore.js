@@ -102,15 +102,29 @@ export const useCurrentTrip = () => {
 
       if (currentTripDoc.exists()) {
         const tripId = currentTripDoc.data().tripId;
+
+        // If tripId is null or undefined, clear the current trip
+        if (!tripId) {
+          setCurrentTrip(null);
+          return;
+        }
+
         const tripRef = doc(db, 'users', currentUser.uid, 'trips', tripId.toString());
         const tripDoc = await getDoc(tripRef);
 
         if (tripDoc.exists()) {
           setCurrentTrip({ ...tripDoc.data(), id: parseInt(tripDoc.id) });
+        } else {
+          // Trip document doesn't exist, clear current trip
+          setCurrentTrip(null);
         }
+      } else {
+        // No current trip document, clear current trip
+        setCurrentTrip(null);
       }
     } catch (err) {
       console.error('Error loading current trip:', err);
+      setCurrentTrip(null);
     } finally {
       setLoading(false);
     }

@@ -1,5 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, MapPin, Plane, DollarSign, TrendingUp, Calendar, Navigation, Train, Map, LogOut, User } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { DateRange } from 'react-date-range';
+import 'react-date-range/dist/styles.css';
+import 'react-date-range/dist/theme/default.css';
+import { Plus, Trash2, MapPin, Plane, DollarSign, TrendingUp, Calendar, Navigation, Train, Map, LogOut, User, ArrowLeft } from 'lucide-react';
 import { useAuth } from './contexts/AuthContext';
 import { useTrips, useCurrentTrip, useFlights, useDailyPlans, useExpenses } from './hooks/useFirestore';
 
@@ -37,12 +40,22 @@ const CITIES_DATABASE = {
   ]
 };
 
-// Create a flat list for searching
-const ALL_CITIES = Object.entries(CITIES_DATABASE).flatMap(([country, cities]) => 
-  cities.map(city => ({ city, country }))
-);
+// Helper to create city list (can be filtered by countries)
+const getCitiesList = (countries = null) => {
+  if (!countries || countries.length === 0) {
+    return Object.entries(CITIES_DATABASE).flatMap(([country, cities]) =>
+      cities.map(city => ({ city, country }))
+    );
+  }
 
-const TravelPlanner = () => {
+  return Object.entries(CITIES_DATABASE)
+    .filter(([country]) => countries.includes(country))
+    .flatMap(([country, cities]) =>
+      cities.map(city => ({ city, country }))
+    );
+};
+
+const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {} }) => {
   // Authentication
   const { currentUser, signOut } = useAuth();
 
@@ -72,6 +85,14 @@ const TravelPlanner = () => {
   const [showEditTripModal, setShowEditTripModal] = useState(false);
   const [editingTripName, setEditingTripName] = useState(false);
   const [editingTripDates, setEditingTripDates] = useState(false);
+  const [dateRange, setDateRange] = useState([{
+    startDate: new Date(),
+    endDate: new Date(),
+    key: 'selection'
+  }]);
+  const [showUserMenu, setShowUserMenu] = useState(false);
+  const [showAccountSettings, setShowAccountSettings] = useState(false);
+  const userMenuRef = useRef(null);
   const [editingDayTitle, setEditingDayTitle] = useState(false);
   const [dayTitleValue, setDayTitleValue] = useState('');
   const [tripForm, setTripForm] = useState({
@@ -80,6 +101,17 @@ const TravelPlanner = () => {
     endDate: ''
   });
 
+  // If an initialTrip was provided (created just now) and the
+  // useCurrentTrip hook hasn't reflected it yet, save it so that
+  // the rest of the app can use the currentTrip state normally.
+  useEffect(() => {
+    if (!currentTrip && initialTrip) {
+      saveCurrentTrip(initialTrip).catch(err => {
+        console.error('Failed to save initial trip from TravelPlanner:', err);
+      });
+    }
+  }, [initialTrip, currentTrip, saveCurrentTrip]);
+
   // Load Google Maps API key from localStorage (not user-specific)
   useEffect(() => {
     const savedApiKey = localStorage.getItem('googleMapsApiKey');
@@ -87,6 +119,43 @@ const TravelPlanner = () => {
       setGoogleMapsApiKey(savedApiKey);
     }
   }, []);
+
+  // Generate daily plans when trip is created
+  useEffect(() => {
+    if (currentTrip && dailyPlans.length === 0 && !plansLoading) {
+      const generateDailyPlans = async () => {
+        const days = [];
+        const start = new Date(currentTrip.startDate);
+        const end = new Date(currentTrip.endDate);
+        let current = new Date(start);
+        let dayId = 1;
+
+        while (current <= end) {
+          const dateStr = current.toISOString().split('T')[0];
+          days.push({
+            id: dayId++,
+            date: dateStr,
+            title: '',
+            city: '',
+            country: '',
+            places: []
+          });
+          current.setDate(current.getDate() + 1);
+        }
+
+        try {
+          await saveDailyPlans(days);
+          if (days.length > 0) {
+            setSelectedDay(days[0].id);
+          }
+        } catch (error) {
+          console.error('Failed to generate daily plans:', error);
+        }
+      };
+
+      generateDailyPlans();
+    }
+  }, [currentTrip, dailyPlans.length, plansLoading]);
 
   // Set selected day when daily plans are loaded
   useEffect(() => {
@@ -362,20 +431,25 @@ const TravelPlanner = () => {
     }
   }, [expenses]);
 
-  // Filter cities based on search term
+  // Filter cities based on search term and trip countries
   const getFilteredCities = (searchTerm) => {
     if (!searchTerm || searchTerm.length < 1) return [];
     const term = searchTerm.toLowerCase();
-    return ALL_CITIES
+    const citiesList = getCitiesList(currentTrip?.countries);
+    return citiesList
       .filter(({ city }) => city.toLowerCase().includes(term))
       .slice(0, 10);
   };
 
-  // Get unique countries
+  // Get unique countries (filtered by trip countries if available)
   const getFilteredCountries = (searchTerm) => {
     if (!searchTerm || searchTerm.length < 1) return [];
     const term = searchTerm.toLowerCase();
-    return Object.keys(CITIES_DATABASE)
+    const availableCountries = currentTrip?.countries && currentTrip.countries.length > 0
+      ? currentTrip.countries
+      : Object.keys(CITIES_DATABASE);
+
+    return availableCountries
       .filter(country => country.toLowerCase().includes(term));
   };
 
@@ -420,7 +494,19 @@ const TravelPlanner = () => {
       startDate: currentTrip.startDate,
       endDate: currentTrip.endDate 
     });
+    // initialize dateRange from currentTrip using local dates to avoid timezone shifts
+    const start = currentTrip?.startDate ? new Date(currentTrip.startDate) : new Date();
+    const end = currentTrip?.endDate ? new Date(currentTrip.endDate) : new Date();
+    setDateRange([{ startDate: start, endDate: end, key: 'selection' }]);
     setEditingTripDates(true);
+  };
+
+  // helper: format a Date into local YYYY-MM-DD without timezone shifting
+  const formatDateLocal = (d) => {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
   };
 
   const handleSaveTripName = async () => {
@@ -438,21 +524,30 @@ const TravelPlanner = () => {
   };
 
   const handleSaveTripDates = async () => {
-    if (tripForm.startDate && tripForm.endDate && currentTrip) {
+    // Close the date editor immediately (optimistic UI), then persist changes.
+    setEditingTripDates(false);
+
+    // Prefer explicit values from the DateRange selection to avoid relying on
+    // possibly-stale `tripForm` state when the user clicks Save quickly.
+    const sel = dateRange && dateRange[0] ? dateRange[0] : null;
+    const startDateToSave = sel && sel.startDate ? formatDateLocal(new Date(sel.startDate)) : tripForm.startDate;
+    const endDateToSave = sel && sel.endDate ? formatDateLocal(new Date(sel.endDate)) : tripForm.endDate;
+
+    if (startDateToSave && endDateToSave && currentTrip) {
       try {
         const updatedTrip = {
           ...currentTrip,
-          startDate: tripForm.startDate,
-          endDate: tripForm.endDate
+          startDate: startDateToSave,
+          endDate: endDateToSave
         };
         await saveTrip(updatedTrip);
         await saveCurrentTrip(updatedTrip);
 
         // Regenerate daily plans if dates changed
-        if (tripForm.startDate !== currentTrip.startDate || tripForm.endDate !== currentTrip.endDate) {
+        if (startDateToSave !== currentTrip.startDate || endDateToSave !== currentTrip.endDate) {
           const days = [];
-          const start = new Date(tripForm.startDate);
-          const end = new Date(tripForm.endDate);
+          const start = new Date(startDateToSave);
+          const end = new Date(endDateToSave);
           let current = new Date(start);
           let dayId = 1;
 
@@ -479,7 +574,6 @@ const TravelPlanner = () => {
         alert('Failed to save trip dates. Please try again.');
       }
     }
-    setEditingTripDates(false);
   };
 
   const handleStartEditingDayTitle = (currentTitle) => {
@@ -555,6 +649,17 @@ const TravelPlanner = () => {
     window.open(`https://www.google.com/maps/dir/?api=1&origin=${encodedOrigin}&destination=${encodedDest}`, '_blank');
   };
 
+  // close user menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target)) {
+        setShowUserMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   // Analytics calculations
   const getTotalExpensesByCategory = () => {
     const byCategory = {};
@@ -611,14 +716,14 @@ const TravelPlanner = () => {
   const selectedDayData = dailyPlans.find(d => d.id === selectedDay);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-2 sm:p-4">
+    <div className="min-h-screen bg-[#F8F9FA] p-2 sm:p-4">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="bg-white rounded-lg shadow-lg p-4 sm:p-6 mb-4 sm:mb-6">
+        <div className="gradient-header rounded-2xl shadow-lg p-4 sm:p-6 mb-4 sm:mb-6">
           <div className="flex items-center justify-between flex-wrap gap-3">
             <div className="flex-1">
-              <h1 className="text-2xl sm:text-3xl font-bold text-gray-800 flex items-center gap-2 mb-2">
-                <MapPin className="text-indigo-600" size={24} />
+              <h1 className="text-2xl sm:text-3xl font-bold text-white flex items-center gap-2 mb-2">
+                <MapPin className="text-white" size={24} />
                 Travel Planner
               </h1>
               
@@ -637,53 +742,59 @@ const TravelPlanner = () => {
                           if (e.key === 'Escape') setEditingTripName(false);
                         }}
                         autoFocus
-                        className="px-3 py-1 rounded bg-gray-100 text-lg font-medium flex-1 outline-none"
+                        className="px-3 py-1 rounded bg-white/90 text-lg font-medium flex-1 outline-none"
                       />
                     </div>
                   ) : (
                     <div
                       onClick={handleStartEditingTripName}
-                      className="cursor-pointer hover:bg-gray-100 px-3 py-1 rounded transition-colors inline-block"
+                      className="cursor-pointer hover:bg-white/20 px-3 py-1 rounded transition-colors inline-block"
                     >
-                      <span className="text-lg font-medium text-gray-800">{currentTrip.name}</span>
+                      <span className="text-lg font-medium text-white">{currentTrip.name}</span>
                     </div>
                   )}
 
                   {/* Trip Dates - Inline Edit */}
                   <div className="hidden sm:block">
                     {editingTripDates ? (
-                      <div className="flex items-center gap-2 px-3 py-1 bg-gray-100 rounded">
-                        <input
-                          type="date"
-                          value={tripForm.startDate}
-                          onChange={(e) => setTripForm({ ...tripForm, startDate: e.target.value })}
-                          className="px-2 py-1 rounded text-sm bg-white outline-none"
-                        />
-                        <span className="text-gray-600">to</span>
-                        <input
-                          type="date"
-                          value={tripForm.endDate}
-                          onChange={(e) => setTripForm({ ...tripForm, endDate: e.target.value })}
-                          onBlur={handleSaveTripDates}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') handleSaveTripDates();
-                            if (e.key === 'Escape') setEditingTripDates(false);
+                      <div className="px-3 py-1 bg-gray-100 rounded">
+                        <DateRange
+                          ranges={dateRange}
+                          onChange={ranges => {
+                            const sel = ranges.selection;
+                            setDateRange([sel]);
+                            setTripForm({
+                              ...tripForm,
+                              startDate: formatDateLocal(new Date(sel.startDate)),
+                              endDate: formatDateLocal(new Date(sel.endDate)),
+                            });
                           }}
-                          className="px-2 py-1 rounded text-sm bg-white outline-none"
+                          months={2}
+                          direction="horizontal"
+                          showDateDisplay={false}
+                          rangeColors={["#FF6B6B"]}
                         />
-                        <button
-                          onClick={handleSaveTripDates}
-                          className="px-3 py-1 bg-indigo-600 text-white rounded text-sm hover:bg-indigo-700"
-                        >
-                          Save
-                        </button>
+                        <div className="flex gap-2 mt-2">
+                          <button
+                            onClick={handleSaveTripDates}
+                            className="px-3 py-1 bg-[#FF6B6B] text-white rounded text-sm hover:bg-[#E85555]"
+                          >
+                            Save
+                          </button>
+                          <button
+                            onClick={() => setEditingTripDates(false)}
+                            className="px-3 py-1 bg-gray-200 text-gray-700 rounded text-sm hover:bg-gray-300"
+                          >
+                            Cancel
+                          </button>
+                        </div>
                       </div>
                     ) : (
                       <div
                         onClick={handleStartEditingTripDates}
-                        className="cursor-pointer hover:bg-gray-100 px-3 py-1 rounded transition-colors inline-block"
+                        className="cursor-pointer hover:bg-white/20 px-3 py-1 rounded transition-colors inline-block"
                       >
-                        <span className="text-sm text-gray-600">
+                        <span className="text-sm text-white/90">
                           {new Date(currentTrip.startDate).toLocaleDateString()} - {new Date(currentTrip.endDate).toLocaleDateString()}
                         </span>
                       </div>
@@ -692,79 +803,99 @@ const TravelPlanner = () => {
                 </div>
               )}
             </div>
-            <div className="flex gap-2 items-center">
+            <div className="flex gap-2 items-center relative">
+              {/* Back button */}
               <button
-                onClick={() => setShowApiKeyModal(true)}
-                className={`px-3 sm:px-4 py-2 rounded-lg text-sm flex items-center gap-2 ${
-                  googleMapsApiKey
-                    ? 'bg-green-100 text-green-700 hover:bg-green-200'
-                    : 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200'
-                }`}
+                onClick={async () => {
+                  try {
+                    await saveCurrentTrip({ id: null, name: null, startDate: null, endDate: null, countries: [] });
+                    onExitTrip();
+                  } catch (error) {
+                    console.error('Failed to go back to trip setup:', error);
+                  }
+                }}
+                className="w-10 h-10 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors"
+                title="Back to trip setup"
               >
-                <Map size={18} />
-                <span className="hidden sm:inline">{googleMapsApiKey ? 'API Connected' : 'Setup API'}</span>
-                <span className="sm:hidden">API</span>
+                <ArrowLeft size={20} className="text-white" />
               </button>
 
-              {/* User Profile */}
+              {/* Avatar-only button that opens a user menu with Setup API, Account Settings and Sign Out */}
               {currentUser && (
-                <div className="flex items-center gap-2 border-l pl-2 ml-2">
-                  <div className="hidden sm:flex items-center gap-2">
+                <div className="relative" ref={userMenuRef}>
+                  <button
+                    onClick={() => setShowUserMenu(prev => !prev)}
+                    className="w-10 h-10 rounded-full bg-white shadow-sm flex items-center justify-center focus:outline-none"
+                    title={currentUser.displayName || currentUser.email}
+                  >
                     {currentUser.photoURL ? (
-                      <img
-                        src={currentUser.photoURL}
-                        alt={currentUser.displayName}
-                        className="w-8 h-8 rounded-full"
-                      />
+                      <img src={currentUser.photoURL} alt={currentUser.displayName} className="w-10 h-10 rounded-full object-cover border-2 border-white/50" />
                     ) : (
-                      <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center">
-                        <User size={18} className="text-indigo-600" />
+                      <div className="w-10 h-10 rounded-full bg-white/30 flex items-center justify-center text-white font-medium border-2 border-white/50">
+                        {(currentUser.displayName || currentUser.email || 'U')[0].toUpperCase()}
                       </div>
                     )}
-                    <span className="text-sm text-gray-700">{currentUser.displayName || currentUser.email}</span>
-                  </div>
-                  <button
-                    onClick={async () => {
-                      if (window.confirm('Are you sure you want to sign out?')) {
-                        await signOut();
-                      }
-                    }}
-                    className="px-3 sm:px-4 py-2 rounded-lg text-sm bg-gray-100 text-gray-700 hover:bg-gray-200 flex items-center gap-2"
-                    title="Sign out"
-                  >
-                    <LogOut size={18} />
-                    <span className="hidden sm:inline">Sign Out</span>
                   </button>
+
+                  {showUserMenu && (
+                    <div className="absolute right-0 mt-2 w-56 bg-white border rounded-lg shadow-lg z-50">
+                      <div className="px-3 py-2 border-b">
+                        <div className="text-sm font-medium text-gray-800">{currentUser.displayName || 'Account'}</div>
+                        <div className="text-xs text-gray-500 truncate">{currentUser.email}</div>
+                      </div>
+                      <button
+                        onClick={() => { setShowApiKeyModal(true); setShowUserMenu(false); }}
+                        className="w-full text-left px-3 py-2 hover:bg-gray-50 flex items-center gap-2"
+                      >
+                        <Map size={16} className="text-gray-600" />
+                        <span className="text-sm text-gray-700">Setup API</span>
+                      </button>
+                      <button
+                        onClick={() => { setShowAccountSettings(true); setShowUserMenu(false); }}
+                        className="w-full text-left px-3 py-2 hover:bg-gray-50 flex items-center gap-2"
+                      >
+                        <User size={16} className="text-gray-600" />
+                        <span className="text-sm text-gray-700">Account Settings</span>
+                      </button>
+                      <button
+                        onClick={async () => {
+                          setShowUserMenu(false);
+                          try {
+                            await saveCurrentTrip({ id: null, name: null, startDate: null, endDate: null, countries: [] });
+                            onExitTrip();
+                          } catch (error) {
+                            console.error('Failed to start new trip:', error);
+                            alert('Failed to start new trip. Please try again.');
+                          }
+                        }}
+                        className="w-full text-left px-3 py-2 hover:bg-gray-50 flex items-center gap-2 border-t"
+                      >
+                        <Plus size={16} className="text-gray-600" />
+                        <span className="text-sm text-gray-700">Start New Trip</span>
+                      </button>
+                      <button
+                        onClick={async () => { setShowUserMenu(false); if (window.confirm('Are you sure you want to sign out?')) { await signOut(); } }}
+                        className="w-full text-left px-3 py-2 hover:bg-gray-50 flex items-center gap-2 text-red-600 border-t"
+                      >
+                        <LogOut size={16} />
+                        <span className="text-sm">Sign Out</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
           </div>
           
-          {/* Data Status Indicator */}
-          <div className="mt-3 pt-3 border-t">
-            <div className="flex items-center gap-2 text-xs text-gray-500">
-              {(tripsLoading || currentTripLoading || flightsLoading || plansLoading || expensesLoading) ? (
-                <>
-                  <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-                  <span>Loading your data...</span>
-                </>
-              ) : (
-                <>
-                  <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                  <span>Cloud sync enabled • Signed in as {currentUser?.email}</span>
-                </>
-              )}
-            </div>
-          </div>
         </div>
 
         {/* Navigation Tabs */}
-        <div className="bg-white rounded-lg shadow-lg mb-4 sm:mb-6">
+        <div className="bg-white rounded-2xl shadow-lg mb-4 sm:mb-6">
           <div className="flex border-b overflow-x-auto">
             <button
               onClick={() => setActiveTab('itinerary')}
-              className={`flex-1 px-3 sm:px-6 py-3 sm:py-4 font-medium flex items-center justify-center gap-2 whitespace-nowrap ${
-                activeTab === 'itinerary' ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-gray-600'
+              className={`flex-1 px-3 sm:px-6 py-3 sm:py-4 font-medium flex items-center justify-center gap-2 whitespace-nowrap transition-all ${
+                activeTab === 'itinerary' ? 'border-b-3 border-[#FF6B6B] text-[#FF6B6B]' : 'text-gray-600 hover:text-[#FF6B6B]'
               }`}
             >
               <Calendar size={20} />
@@ -773,8 +904,8 @@ const TravelPlanner = () => {
             </button>
             <button
               onClick={() => setActiveTab('flights')}
-              className={`flex-1 px-3 sm:px-6 py-3 sm:py-4 font-medium flex items-center justify-center gap-2 whitespace-nowrap ${
-                activeTab === 'flights' ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-gray-600'
+              className={`flex-1 px-3 sm:px-6 py-3 sm:py-4 font-medium flex items-center justify-center gap-2 whitespace-nowrap transition-all ${
+                activeTab === 'flights' ? 'border-b-3 border-[#4ECDC4] text-[#4ECDC4]' : 'text-gray-600 hover:text-[#4ECDC4]'
               }`}
             >
               <Plane size={20} />
@@ -782,8 +913,8 @@ const TravelPlanner = () => {
             </button>
             <button
               onClick={() => setActiveTab('expenses')}
-              className={`flex-1 px-3 sm:px-6 py-3 sm:py-4 font-medium flex items-center justify-center gap-2 whitespace-nowrap ${
-                activeTab === 'expenses' ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-gray-600'
+              className={`flex-1 px-3 sm:px-6 py-3 sm:py-4 font-medium flex items-center justify-center gap-2 whitespace-nowrap transition-all ${
+                activeTab === 'expenses' ? 'border-b-3 border-[#FFE66D] text-[#F7B731]' : 'text-gray-600 hover:text-[#F7B731]'
               }`}
             >
               <DollarSign size={20} />
@@ -791,8 +922,8 @@ const TravelPlanner = () => {
             </button>
             <button
               onClick={() => setActiveTab('analytics')}
-              className={`flex-1 px-3 sm:px-6 py-3 sm:py-4 font-medium flex items-center justify-center gap-2 whitespace-nowrap ${
-                activeTab === 'analytics' ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-gray-600'
+              className={`flex-1 px-3 sm:px-6 py-3 sm:py-4 font-medium flex items-center justify-center gap-2 whitespace-nowrap transition-all ${
+                activeTab === 'analytics' ? 'border-b-3 border-[#26DE81] text-[#26DE81]' : 'text-gray-600 hover:text-[#26DE81]'
               }`}
             >
               <TrendingUp size={20} />
@@ -803,36 +934,29 @@ const TravelPlanner = () => {
         </div>
 
         {/* Content Area */}
-        <div className="bg-white rounded-lg shadow-lg p-3 sm:p-6">
+        <div className="bg-white rounded-2xl shadow-lg p-3 sm:p-6">
           
           {/* ITINERARY TAB */}
           {activeTab === 'itinerary' && (
             <div className="space-y-6">
               {/* Day Selector */}
               <div className="flex items-center gap-4 overflow-x-auto pb-4">
-                {dailyPlans.map((day, index) => {
-                  const dayNumber = index + 1;
-                  const defaultTitle = `Day ${dayNumber}`;
-                  const displayTitle = day.title || defaultTitle;
-                  
-                  return (
-                    <button
-                      key={day.id}
-                      onClick={() => setSelectedDay(day.id)}
-                      className={`flex-shrink-0 px-4 py-3 rounded-lg border-2 transition-all ${
-                        selectedDay === day.id
-                          ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
-                          : 'border-gray-200 hover:border-gray-300'
-                      }`}
-                    >
-                      <div className="font-medium">{new Date(day.date).toLocaleDateString('en-US', { weekday: 'short' })}</div>
-                      <div className="text-sm">{new Date(day.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
-                      <div className={`text-xs mt-1 font-medium max-w-[100px] truncate ${day.title ? 'text-indigo-600' : 'text-gray-500'}`}>
-                        {displayTitle}
-                      </div>
-                    </button>
-                  );
-                })}
+                  {dailyPlans.map((day, index) => {
+                    return (
+                      <button
+                        key={day.id}
+                        onClick={() => setSelectedDay(day.id)}
+                        className={`flex-shrink-0 px-4 py-3 rounded-xl border-2 transition-all ${
+                          selectedDay === day.id
+                            ? 'border-[#FF6B6B] bg-gradient-to-br from-[#FF6B6B]/10 to-[#FFE66D]/10 text-[#FF6B6B] shadow-md'
+                            : 'border-gray-200 hover:border-[#FF6B6B]/50 hover:shadow-sm'
+                        }`}
+                      >
+                        <div className="font-medium">{new Date(day.date).toLocaleDateString('en-US', { weekday: 'short' })}</div>
+                        <div className="text-sm">{new Date(day.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
+                      </button>
+                    );
+                  })}
               </div>
 
               {selectedDayData && (
@@ -857,12 +981,12 @@ const TravelPlanner = () => {
                           }}
                           autoFocus
                           placeholder={`Day ${dailyPlans.findIndex(d => d.id === selectedDay) + 1}`}
-                          className="w-full px-3 py-2 rounded bg-gray-100 font-medium text-indigo-700 outline-none"
+                          className="w-full px-3 py-2 rounded bg-gray-100 font-medium text-[#FF6B6B] outline-none"
                         />
                       ) : (
                         <div
                           onClick={() => handleStartEditingDayTitle(selectedDayData.title)}
-                          className="w-full px-3 py-2 rounded cursor-pointer hover:bg-gray-100 transition-colors font-medium text-indigo-700"
+                          className="w-full px-3 py-2 rounded cursor-pointer hover:bg-gray-100 transition-colors font-medium text-[#FF6B6B]"
                         >
                           {selectedDayData.title || `Day ${dailyPlans.findIndex(d => d.id === selectedDay) + 1}`}
                         </div>
@@ -957,10 +1081,10 @@ const TravelPlanner = () => {
                         >
                           <div className="flex items-start gap-3">
                             {/* Checkbox */}
-                            <div className={`flex-shrink-0 w-6 h-6 sm:w-7 sm:h-7 rounded-full border-2 flex items-center justify-center mt-1 ${
-                              place.visited 
-                                ? 'bg-green-500 border-green-500' 
-                                : 'border-gray-300 hover:border-indigo-500'
+                            <div className={`flex-shrink-0 w-6 h-6 sm:w-7 sm:h-7 rounded-full border-2 flex items-center justify-center mt-1 transition-all ${
+                              place.visited
+                                ? 'bg-[#26DE81] border-[#26DE81]'
+                                : 'border-gray-300 hover:border-[#FF6B6B]'
                             }`}>
                               {place.visited && (
                                 <svg className="w-4 h-4 text-white" fill="none" strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" viewBox="0 0 24 24" stroke="currentColor">
@@ -972,23 +1096,23 @@ const TravelPlanner = () => {
                             {/* Place Info */}
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 mb-1 flex-wrap">
-                                <span className="bg-indigo-100 text-indigo-700 px-2 py-1 rounded text-xs sm:text-sm font-medium">
+                                <span className="bg-gradient-to-r from-[#FF6B6B]/10 to-[#FFE66D]/10 text-[#FF6B6B] px-2 py-1 rounded-full text-xs sm:text-sm font-medium">
                                   #{index + 1}
                                 </span>
-                                <h4 className={`font-bold text-base sm:text-lg ${place.visited ? 'line-through text-gray-500' : ''}`}>
+                                <h4 className={`font-bold text-base sm:text-lg ${place.visited ? 'line-through text-[#A1A1A1]' : ''}`}>
                                   {place.name}
                                 </h4>
                               </div>
                               {!place.visited && (
                                 <>
-                                  <p className="text-gray-600 text-sm mb-1">{place.address}</p>
+                                  <p className="text-[#A1A1A1] text-sm mb-1">{place.address}</p>
                                   {place.notes && (
-                                    <p className="text-gray-500 text-sm italic">{place.notes}</p>
+                                    <p className="text-[#A1A1A1] text-sm italic">{place.notes}</p>
                                   )}
                                 </>
                               )}
                               {place.visited && (
-                                <p className="text-gray-500 text-sm">✓ Visited</p>
+                                <p className="text-[#A1A1A1] text-sm">✓ Visited</p>
                               )}
                             </div>
 
@@ -1022,11 +1146,11 @@ const TravelPlanner = () => {
                         {/* Transportation Info - Only show when not visited */}
                         {!place.visited && index > 0 && (
                           <div className="px-3 sm:px-4 pb-3 sm:pb-4">
-                            <div className="bg-blue-50 p-2 sm:p-3 rounded-lg">
+                            <div className="bg-gradient-to-r from-[#4ECDC4]/10 to-[#4ECDC4]/5 p-2 sm:p-3 rounded-lg">
                               <div className="flex flex-wrap items-center gap-2 sm:gap-4 text-xs sm:text-sm">
                                 <div className="flex items-center gap-2">
-                                  {place.transportMode === 'walking' && <Navigation size={16} className="text-blue-600" />}
-                                  {place.transportMode === 'metro' && <Train size={16} className="text-blue-600" />}
+                                  {place.transportMode === 'walking' && <Navigation size={16} className="text-[#4ECDC4]" />}
+                                  {place.transportMode === 'metro' && <Train size={16} className="text-[#4ECDC4]" />}
                                   <span className="font-medium capitalize">{place.transportMode}</span>
                                 </div>
                                 {place.transportTime && (
@@ -1050,7 +1174,7 @@ const TravelPlanner = () => {
                                         place.address
                                       );
                                     }}
-                                    className="text-blue-600 hover:underline flex items-center gap-1 whitespace-nowrap"
+                                    className="text-[#4ECDC4] hover:underline flex items-center gap-1 whitespace-nowrap"
                                   >
                                     <Map size={14} />
                                     <span className="hidden sm:inline">Get Directions</span>
@@ -1068,7 +1192,7 @@ const TravelPlanner = () => {
                   {/* Add Place Button */}
                   <button
                     onClick={() => setShowAddPlace(true)}
-                    className="mt-4 w-full px-4 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 flex items-center justify-center gap-2 text-sm sm:text-base"
+                    className="mt-4 w-full px-4 py-3 bg-gradient-to-r from-[#FF6B6B] to-[#FF8E53] text-white rounded-xl hover:shadow-lg transition-all hover:scale-[1.02] flex items-center justify-center gap-2 text-sm sm:text-base font-medium"
                   >
                     <Plus size={20} />
                     Add Place to This Day
@@ -1173,13 +1297,13 @@ const TravelPlanner = () => {
                       <button
                         onClick={handleAddPlace}
                         disabled={!placeForm.name || !placeForm.address || calculatingDistance}
-                        className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:bg-gray-300 text-sm sm:text-base"
+                        className="flex-1 px-4 py-2 bg-gradient-to-r from-[#FF6B6B] to-[#FF8E53] text-white rounded-xl hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm sm:text-base font-medium"
                       >
                         {calculatingDistance ? 'Calculating Route...' : 'Add Place'}
                       </button>
                       <button
                         onClick={() => setShowAddPlace(false)}
-                        className="flex-1 px-4 py-2 border rounded-lg hover:bg-gray-50 text-sm sm:text-base"
+                        className="flex-1 px-4 py-2 border-2 border-gray-200 rounded-xl hover:bg-gray-50 text-sm sm:text-base transition-all"
                       >
                         Cancel
                       </button>
@@ -1197,7 +1321,7 @@ const TravelPlanner = () => {
                 <h2 className="text-2xl font-bold">Flights</h2>
                 <button
                   onClick={() => setShowAddFlight(true)}
-                  className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 flex items-center gap-2"
+                  className="px-4 py-2 bg-gradient-to-r from-[#4ECDC4] to-[#44A08D] text-white rounded-xl hover:shadow-lg transition-all hover:scale-[1.02] flex items-center gap-2 font-medium"
                 >
                   <Plus size={20} />
                   Add Flight
@@ -1206,13 +1330,13 @@ const TravelPlanner = () => {
 
               {flights.length === 0 ? (
                 <div className="text-center py-12 text-gray-500">
-                  <Plane size={48} className="mx-auto mb-4 opacity-50" />
+                  <Plane size={48} className="mx-auto mb-4 opacity-50 text-[#4ECDC4]" />
                   <p>No flights added yet. Click "Add Flight" to get started.</p>
                 </div>
               ) : (
                 <div className="space-y-3">
                   {flights.map(flight => (
-                    <div key={flight.id} className="border rounded-lg p-4 hover:shadow-md transition-shadow">
+                    <div key={flight.id} className="border-2 border-gray-100 rounded-xl p-4 hover:shadow-lg hover:border-[#4ECDC4]/30 transition-all">
                       <div className="flex justify-between items-start">
                         <div className="flex-1">
                           <div className="flex items-center gap-3 mb-2">
@@ -1224,7 +1348,7 @@ const TravelPlanner = () => {
                               <div className="font-medium">{flight.from}</div>
                               <div className="text-sm">{flight.departureTime}</div>
                             </div>
-                            <Plane size={20} className="text-indigo-600" />
+                            <Plane size={20} className="text-[#4ECDC4]" />
                             <div>
                               <div className="font-medium">{flight.to}</div>
                               <div className="text-sm">{flight.arrivalTime}</div>
@@ -1315,13 +1439,13 @@ const TravelPlanner = () => {
                       <button
                         onClick={handleAddFlight}
                         disabled={!flightForm.airline || !flightForm.flightNumber || !flightForm.from || !flightForm.to}
-                        className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:bg-gray-300 text-sm sm:text-base"
+                        className="flex-1 px-4 py-2 bg-gradient-to-r from-[#4ECDC4] to-[#44A08D] text-white rounded-xl hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm sm:text-base font-medium"
                       >
                         Add Flight
                       </button>
                       <button
                         onClick={() => setShowAddFlight(false)}
-                        className="flex-1 px-4 py-2 border rounded-lg hover:bg-gray-50 text-sm sm:text-base"
+                        className="flex-1 px-4 py-2 border-2 border-gray-200 rounded-xl hover:bg-gray-50 text-sm sm:text-base transition-all"
                       >
                         Cancel
                       </button>
@@ -1339,7 +1463,7 @@ const TravelPlanner = () => {
                 <h2 className="text-2xl font-bold">Expenses</h2>
                 <button
                   onClick={() => setShowAddExpense(true)}
-                  className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 flex items-center gap-2"
+                  className="px-4 py-2 bg-gradient-to-r from-[#FFE66D] to-[#FFBE5C] text-gray-800 rounded-xl hover:shadow-lg transition-all hover:scale-[1.02] flex items-center gap-2 font-medium"
                 >
                   <Plus size={20} />
                   Add Expense
@@ -1348,13 +1472,13 @@ const TravelPlanner = () => {
 
               {expenses.length === 0 ? (
                 <div className="text-center py-12 text-gray-500">
-                  <DollarSign size={48} className="mx-auto mb-4 opacity-50" />
+                  <DollarSign size={48} className="mx-auto mb-4 opacity-50 text-[#FFE66D]" />
                   <p>No expenses tracked yet. Click "Add Expense" to get started.</p>
                 </div>
               ) : (
                 <div className="space-y-3">
                   {expenses.map(expense => (
-                    <div key={expense.id} className="border rounded-lg p-4 hover:shadow-md transition-shadow">
+                    <div key={expense.id} className="border-2 border-gray-100 rounded-xl p-4 hover:shadow-lg hover:border-[#FFE66D]/50 transition-all">
                       <div className="flex justify-between items-start">
                         <div className="flex-1">
                           <div className="flex items-center gap-3 mb-2">
@@ -1363,7 +1487,7 @@ const TravelPlanner = () => {
                               {expense.category}
                             </span>
                           </div>
-                          <div className="text-2xl font-bold text-indigo-600 mb-2">
+                          <div className="text-2xl font-bold text-[#F7B731] mb-2">
                             {expense.currency} ${parseFloat(expense.amount).toFixed(2)}
                           </div>
                           <div className="flex gap-4 text-sm text-gray-600">
@@ -1511,13 +1635,13 @@ const TravelPlanner = () => {
                       <button
                         onClick={handleAddExpense}
                         disabled={!expenseForm.description || !expenseForm.amount}
-                        className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:bg-gray-300 text-sm sm:text-base"
+                        className="flex-1 px-4 py-2 bg-gradient-to-r from-[#FFE66D] to-[#FFBE5C] text-gray-800 rounded-xl hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm sm:text-base font-medium"
                       >
                         Add Expense
                       </button>
                       <button
                         onClick={() => setShowAddExpense(false)}
-                        className="flex-1 px-4 py-2 border rounded-lg hover:bg-gray-50 text-sm sm:text-base"
+                        className="flex-1 px-4 py-2 border-2 border-gray-200 rounded-xl hover:bg-gray-50 text-sm sm:text-base transition-all"
                       >
                         Cancel
                       </button>
@@ -1534,9 +1658,9 @@ const TravelPlanner = () => {
               <h2 className="text-2xl font-bold">Analytics & Insights</h2>
 
               {/* Expense Analytics */}
-              <div className="border rounded-lg p-6">
+              <div className="border-2 border-gray-100 rounded-xl p-6">
                 <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
-                  <DollarSign className="text-green-600" />
+                  <DollarSign className="text-[#26DE81]" />
                   Expense Breakdown
                 </h3>
                 
@@ -1549,15 +1673,15 @@ const TravelPlanner = () => {
                       <h4 className="font-medium mb-3">By Category</h4>
                       <div className="space-y-2">
                         {Object.entries(getTotalExpensesByCategory()).map(([category, amount]) => (
-                          <div key={category} className="flex justify-between items-center p-3 bg-gray-50 rounded">
-                            <span className="capitalize">{category}</span>
-                            <span className="font-bold text-green-600">${amount.toFixed(2)}</span>
+                          <div key={category} className="flex justify-between items-center p-3 bg-gradient-to-r from-[#FFE66D]/10 to-[#FFE66D]/5 rounded-lg">
+                            <span className="capitalize font-medium">{category}</span>
+                            <span className="font-bold text-[#F7B731]">${amount.toFixed(2)}</span>
                           </div>
                         ))}
                       </div>
                       <div className="mt-3 pt-3 border-t font-bold text-lg flex justify-between">
                         <span>Total</span>
-                        <span className="text-green-600">
+                        <span className="text-[#F7B731]">
                           ${expenses.reduce((sum, e) => sum + parseFloat(e.amount || 0), 0).toFixed(2)}
                         </span>
                       </div>
@@ -1569,9 +1693,9 @@ const TravelPlanner = () => {
                         <h4 className="font-medium mb-3">By City</h4>
                         <div className="space-y-2">
                           {Object.entries(getTotalExpensesByCity()).map(([city, amount]) => (
-                            <div key={city} className="flex justify-between items-center p-3 bg-blue-50 rounded">
-                              <span>{city}</span>
-                              <span className="font-bold text-blue-600">${amount.toFixed(2)}</span>
+                            <div key={city} className="flex justify-between items-center p-3 bg-gradient-to-r from-[#4ECDC4]/10 to-[#4ECDC4]/5 rounded-lg">
+                              <span className="font-medium">{city}</span>
+                              <span className="font-bold text-[#4ECDC4]">${amount.toFixed(2)}</span>
                             </div>
                           ))}
                         </div>
@@ -1584,9 +1708,9 @@ const TravelPlanner = () => {
                         <h4 className="font-medium mb-3">By Country</h4>
                         <div className="space-y-2">
                           {Object.entries(getTotalExpensesByCountry()).map(([country, amount]) => (
-                            <div key={country} className="flex justify-between items-center p-3 bg-purple-50 rounded">
-                              <span>{country}</span>
-                              <span className="font-bold text-purple-600">${amount.toFixed(2)}</span>
+                            <div key={country} className="flex justify-between items-center p-3 bg-gradient-to-r from-[#FF6B6B]/10 to-[#FF8E53]/10 rounded-lg">
+                              <span className="font-medium">{country}</span>
+                              <span className="font-bold text-[#FF6B6B]">${amount.toFixed(2)}</span>
                             </div>
                           ))}
                         </div>
@@ -1597,9 +1721,9 @@ const TravelPlanner = () => {
               </div>
 
               {/* Distance Analytics */}
-              <div className="border rounded-lg p-6">
+              <div className="border-2 border-gray-100 rounded-xl p-6">
                 <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
-                  <Navigation className="text-blue-600" />
+                  <Navigation className="text-[#4ECDC4]" />
                   Distance Tracking
                 </h3>
 
@@ -1614,15 +1738,15 @@ const TravelPlanner = () => {
                         {Object.entries(getTotalDistanceByMode())
                           .filter(([_, dist]) => dist > 0)
                           .map(([mode, distance]) => (
-                            <div key={mode} className="flex justify-between items-center p-3 bg-gray-50 rounded">
-                              <span className="capitalize">{mode}</span>
-                              <span className="font-bold text-blue-600">{distance.toFixed(2)} km</span>
+                            <div key={mode} className="flex justify-between items-center p-3 bg-gradient-to-r from-[#4ECDC4]/10 to-[#4ECDC4]/5 rounded-lg">
+                              <span className="capitalize font-medium">{mode}</span>
+                              <span className="font-bold text-[#4ECDC4]">{distance.toFixed(2)} km</span>
                             </div>
                           ))}
                       </div>
                       <div className="mt-3 pt-3 border-t font-bold text-lg flex justify-between">
                         <span>Total Distance</span>
-                        <span className="text-blue-600">
+                        <span className="text-[#4ECDC4]">
                           {Object.values(getTotalDistanceByMode()).reduce((a, b) => a + b, 0).toFixed(2)} km
                         </span>
                       </div>
@@ -1636,9 +1760,9 @@ const TravelPlanner = () => {
                           {Object.entries(getTotalDistanceByCity())
                             .filter(([_, dist]) => dist > 0)
                             .map(([city, distance]) => (
-                              <div key={city} className="flex justify-between items-center p-3 bg-indigo-50 rounded">
-                                <span>{city}</span>
-                                <span className="font-bold text-indigo-600">{distance.toFixed(2)} km</span>
+                              <div key={city} className="flex justify-between items-center p-3 bg-gradient-to-r from-[#26DE81]/10 to-[#26DE81]/5 rounded-lg">
+                                <span className="font-medium">{city}</span>
+                                <span className="font-bold text-[#26DE81]">{distance.toFixed(2)} km</span>
                               </div>
                             ))}
                         </div>
@@ -1705,16 +1829,38 @@ const TravelPlanner = () => {
                     }
                     setShowApiKeyModal(false);
                   }}
-                  className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm sm:text-base"
+                  className="flex-1 px-4 py-2 bg-gradient-to-r from-[#4ECDC4] to-[#44A08D] text-white rounded-xl hover:shadow-lg transition-all text-sm sm:text-base font-medium"
                 >
                   Save API Key
                 </button>
                 <button
                   onClick={() => setShowApiKeyModal(false)}
-                  className="flex-1 px-4 py-2 border rounded-lg hover:bg-gray-50 text-sm sm:text-base"
+                  className="flex-1 px-4 py-2 border-2 border-gray-200 rounded-xl hover:bg-gray-50 text-sm sm:text-base transition-all"
                 >
                   Cancel
                 </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Account Settings Modal */}
+        {showAccountSettings && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg p-4 sm:p-6 max-w-md w-full">
+              <h3 className="text-xl sm:text-2xl font-bold mb-4">Account Settings</h3>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Name</label>
+                  <div className="mt-1 text-gray-800">{currentUser?.displayName || '—'}</div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Email</label>
+                  <div className="mt-1 text-gray-800">{currentUser?.email}</div>
+                </div>
+              </div>
+              <div className="mt-6 flex justify-end gap-3">
+                <button onClick={() => setShowAccountSettings(false)} className="px-4 py-2 border rounded-lg hover:bg-gray-50">Close</button>
               </div>
             </div>
           </div>
@@ -1782,13 +1928,13 @@ const TravelPlanner = () => {
                 <button
                   onClick={handleSaveTripEdit}
                   disabled={!tripForm.name || !tripForm.startDate || !tripForm.endDate}
-                  className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:bg-gray-300 text-sm sm:text-base"
+                  className="flex-1 px-4 py-2 bg-gradient-to-r from-[#FF6B6B] to-[#FF8E53] text-white rounded-xl hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm sm:text-base font-medium"
                 >
                   Save Changes
                 </button>
                 <button
                   onClick={() => setShowEditTripModal(false)}
-                  className="flex-1 px-4 py-2 border rounded-lg hover:bg-gray-50 text-sm sm:text-base"
+                  className="flex-1 px-4 py-2 border-2 border-gray-200 rounded-xl hover:bg-gray-50 text-sm sm:text-base transition-all"
                 >
                   Cancel
                 </button>
