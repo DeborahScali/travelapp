@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { DateRange } from 'react-date-range';
 import 'react-date-range/dist/styles.css';
 import 'react-date-range/dist/theme/default.css';
-import { Plus, Trash2, MapPin, Plane, DollarSign, TrendingUp, Calendar, Navigation, Train, Map as MapIcon, LogOut, User, ArrowLeft } from 'lucide-react';
+import { Plus, Trash2, MapPin, Plane, DollarSign, TrendingUp, Calendar, Navigation, Train, Map as MapIcon, LogOut, User, ArrowLeft, X } from 'lucide-react';
 import { useAuth } from './contexts/AuthContext';
 import { useTrips, useCurrentTrip, useFlights, useDailyPlans, useExpenses } from './hooks/useFirestore';
 
@@ -71,7 +71,8 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {} }) => {
   const [showAddPlace, setShowAddPlace] = useState(false);
   const [showAddExpense, setShowAddExpense] = useState(false);
   const [selectedDay, setSelectedDay] = useState(null);
-  const [googleMapsApiKey, setGoogleMapsApiKey] = useState('');
+  const initialMapsKey = (import.meta?.env?.VITE_GOOGLE_MAPS_API_KEY || '').trim();
+  const [googleMapsApiKey, setGoogleMapsApiKey] = useState(initialMapsKey);
   const [showApiKeyModal, setShowApiKeyModal] = useState(false);
   const [calculatingDistance, setCalculatingDistance] = useState(false);
   const [citySearchTerm, setCitySearchTerm] = useState('');
@@ -100,6 +101,8 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {} }) => {
     startDate: '',
     endDate: ''
   });
+  const mapsApiKey = (googleMapsApiKey || (import.meta?.env?.VITE_GOOGLE_MAPS_API_KEY || '')).trim();
+  const selectedDayData = dailyPlans.find(d => d.id === selectedDay);
 
   // If an initialTrip was provided (created just now) and the
   // useCurrentTrip hook hasn't reflected it yet, save it so that
@@ -112,13 +115,13 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {} }) => {
     }
   }, [initialTrip, currentTrip, saveCurrentTrip]);
 
-  // Load Google Maps API key from localStorage (not user-specific)
+  // Keep googleMapsApiKey in sync if env changes during HMR
   useEffect(() => {
-    const savedApiKey = localStorage.getItem('googleMapsApiKey');
-    if (savedApiKey) {
-      setGoogleMapsApiKey(savedApiKey);
+    const envApiKey = (import.meta?.env?.VITE_GOOGLE_MAPS_API_KEY || '').trim();
+    if (envApiKey && envApiKey !== googleMapsApiKey) {
+      setGoogleMapsApiKey(envApiKey);
     }
-  }, []);
+  }, [googleMapsApiKey]);
 
   // Generate daily plans when trip is created
   useEffect(() => {
@@ -272,7 +275,7 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {} }) => {
     let finalPlaceForm = { ...placeForm };
     
     // If there's a previous place and we have an API key, calculate distance and time
-    if (selectedDayData && selectedDayData.places.length > 0 && googleMapsApiKey) {
+    if (selectedDayData && selectedDayData.places.length > 0 && mapsApiKey) {
       const previousPlace = selectedDayData.places[selectedDayData.places.length - 1];
       const result = await calculateDistanceAndTime(
         previousPlace.address,
@@ -385,7 +388,7 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {} }) => {
   };
 
   const calculateDistanceAndTime = async (origin, destination, mode) => {
-    if (!googleMapsApiKey) {
+    if (!mapsApiKey) {
       return { distance: '', time: '', error: 'API key not set' };
     }
 
@@ -404,11 +407,11 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {} }) => {
       
       const travelMode = travelModeMap[mode] || 'walking';
       
-      const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${encodeURIComponent(origin)}&destinations=${encodeURIComponent(destination)}&mode=${travelMode}&key=${googleMapsApiKey}`;
+      const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${encodeURIComponent(origin)}&destinations=${encodeURIComponent(destination)}&mode=${travelMode}&key=${mapsApiKey}`;
       
       // Note: Due to CORS restrictions, we need to use a proxy or backend
       // For now, we'll use the Directions API with JSONP callback
-      const directionsUrl = `https://maps.googleapis.com/maps/api/directions/json?origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}&mode=${travelMode}&key=${googleMapsApiKey}`;
+      const directionsUrl = `https://maps.googleapis.com/maps/api/directions/json?origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}&mode=${travelMode}&key=${mapsApiKey}`;
       
       // Since we can't directly call the API from the browser due to CORS,
       // we'll use the JavaScript API instead
@@ -444,16 +447,104 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {} }) => {
     }
   };
 
+  // Google Maps setup
+  const [mapsReady, setMapsReady] = useState(typeof window !== 'undefined' && !!window.google?.maps);
+  const mapRef = useRef(null);
+  const mapInstanceRef = useRef(null);
+  const markersRef = useRef([]);
+  const [showMapPanel, setShowMapPanel] = useState(false);
+  const [mapLoading, setMapLoading] = useState(false);
+
   // Load Google Maps API
   useEffect(() => {
-    if (googleMapsApiKey && !window.google) {
-      const script = document.createElement('script');
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${googleMapsApiKey}&libraries=places`;
-      script.async = true;
-      script.defer = true;
-      document.head.appendChild(script);
+    if (!mapsApiKey) return;
+    if (window.google && window.google.maps) {
+      setMapsReady(true);
+      return;
     }
-  }, [googleMapsApiKey]);
+
+    const scriptId = 'google-maps-js';
+    if (document.getElementById(scriptId)) return;
+
+    const script = document.createElement('script');
+    script.id = scriptId;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${mapsApiKey}&libraries=places`;
+    script.async = true;
+    script.defer = true;
+    script.onload = () => setMapsReady(true);
+    script.onerror = () => console.error('Failed to load Google Maps script');
+    document.head.appendChild(script);
+  }, [mapsApiKey]);
+
+  // Initialize map instance when panel is shown and Maps is ready
+  useEffect(() => {
+    if (!showMapPanel || !mapsReady || !mapRef.current) return;
+    if (!mapInstanceRef.current) {
+      mapInstanceRef.current = new window.google.maps.Map(mapRef.current, {
+        center: { lat: 0, lng: 0 },
+        zoom: 3,
+        mapTypeControl: false,
+        streetViewControl: false,
+        fullscreenControl: false,
+      });
+    }
+  }, [showMapPanel, mapsReady]);
+
+  // Clear markers when hiding the map
+  useEffect(() => {
+    if (showMapPanel) return;
+    markersRef.current.forEach(m => m.setMap(null));
+    markersRef.current = [];
+  }, [showMapPanel]);
+
+  // Plot markers for places on the selected day
+  useEffect(() => {
+    if (!showMapPanel || !mapsReady || !mapInstanceRef.current) return;
+    markersRef.current.forEach(m => m.setMap(null));
+    markersRef.current = [];
+
+    if (!selectedDayData || !selectedDayData.places?.length) return;
+
+    const geocoder = new window.google.maps.Geocoder();
+    const bounds = new window.google.maps.LatLngBounds();
+    let cancelled = false;
+    setMapLoading(true);
+
+    const geocodePlace = (place) => new Promise(resolve => {
+      const target = place.address || place.name;
+      if (!target) return resolve(null);
+      geocoder.geocode({ address: target }, (results, status) => {
+        if (cancelled) return resolve(null);
+        if (status === 'OK' && results[0]) {
+          const loc = results[0].geometry.location;
+          const marker = new window.google.maps.Marker({
+            map: mapInstanceRef.current,
+            position: loc,
+            title: place.name || place.address || 'Place'
+          });
+          const info = new window.google.maps.InfoWindow({
+            content: `<div style="max-width:220px"><strong>${place.name || 'Place'}</strong><div style="color:#666;font-size:12px;">${place.address || ''}</div></div>`
+          });
+          marker.addListener('click', () => info.open({ anchor: marker, map: mapInstanceRef.current }));
+          markersRef.current.push(marker);
+          bounds.extend(loc);
+          resolve(loc);
+        } else {
+          resolve(null);
+        }
+      });
+    });
+
+    Promise.all(selectedDayData.places.map(geocodePlace)).then(() => {
+      if (cancelled) return;
+      setMapLoading(false);
+      if (!bounds.isEmpty()) {
+        mapInstanceRef.current.fitBounds(bounds);
+      }
+    }).catch(() => setMapLoading(false));
+
+    return () => { cancelled = true; };
+  }, [showMapPanel, mapsReady, selectedDayData]);
 
   // Auto-save to Firestore whenever data changes
   useEffect(() => {
@@ -771,8 +862,6 @@ const parseLocalDate = (value) => {
     return byCity;
   };
 
-  const selectedDayData = dailyPlans.find(d => d.id === selectedDay);
-
   return (
     <div className="min-h-screen bg-[#F8F9FA] p-2 sm:p-4">
       <div className="max-w-7xl mx-auto">
@@ -815,36 +904,39 @@ const parseLocalDate = (value) => {
                   {/* Trip Dates - Inline Edit */}
                   <div className="hidden sm:block">
                     {editingTripDates ? (
-                      <div className="px-3 py-1 bg-gray-100 rounded">
-                        <DateRange
-                          ranges={dateRange}
-                          onChange={ranges => {
-                            const sel = ranges.selection;
-                            setDateRange([sel]);
-                            setTripForm({
-                              ...tripForm,
-                              startDate: formatDateLocal(new Date(sel.startDate)),
-                              endDate: formatDateLocal(new Date(sel.endDate)),
-                            });
-                          }}
-                          months={2}
-                          direction="horizontal"
-                          showDateDisplay={false}
-                          rangeColors={["#FF6B6B"]}
-                        />
-                        <div className="flex gap-2 mt-2">
-                          <button
-                            onClick={handleSaveTripDates}
-                            className="px-3 py-1 bg-[#FF6B6B] text-white rounded text-sm hover:bg-[#E85555]"
-                          >
-                            Save
-                          </button>
-                          <button
-                            onClick={() => setEditingTripDates(false)}
-                            className="px-3 py-1 bg-gray-200 text-gray-700 rounded text-sm hover:bg-gray-300"
-                          >
-                            Cancel
-                          </button>
+                      <div className="mt-2 flex justify-start">
+                        <div className="inline-block bg-white border-2 border-gray-200 rounded-xl shadow-lg p-4">
+                          <DateRange
+                            ranges={dateRange}
+                            onChange={ranges => {
+                              const sel = ranges.selection;
+                              setDateRange([sel]);
+                              setTripForm({
+                                ...tripForm,
+                                startDate: formatDateLocal(new Date(sel.startDate)),
+                                endDate: formatDateLocal(new Date(sel.endDate)),
+                              });
+                            }}
+                            months={2}
+                            direction="horizontal"
+                            showDateDisplay={false}
+                            rangeColors={["#FF6B6B"]}
+                            className="rounded-xl"
+                          />
+                          <div className="flex gap-2 mt-3">
+                            <button
+                              onClick={handleSaveTripDates}
+                              className="px-3 py-2 bg-[#FF6B6B] text-white rounded-lg text-sm hover:bg-[#E85555] transition-colors"
+                            >
+                              Save
+                            </button>
+                            <button
+                              onClick={() => setEditingTripDates(false)}
+                              className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm hover:bg-gray-200 transition-colors"
+                            >
+                              Cancel
+                            </button>
+                          </div>
                         </div>
                       </div>
                     ) : (
@@ -996,10 +1088,21 @@ const parseLocalDate = (value) => {
           
           {/* ITINERARY TAB */}
           {activeTab === 'itinerary' && (
-            <div className="space-y-6">
-              {/* Day Selector */}
-              <div className="flex items-center gap-4 overflow-x-auto pb-4">
-                  {dailyPlans.map((day, index) => {
+            <div className="grid lg:grid-cols-[2fr_1fr] gap-4 items-start">
+              <div className="space-y-6">
+                <div className="flex items-center justify-between flex-wrap gap-3">
+                  <div className="text-sm font-semibold text-gray-700">Plan your days</div>
+                  <button
+                    onClick={() => setShowMapPanel(prev => !prev)}
+                    className="px-3 py-2 text-sm font-semibold rounded-lg border border-gray-200 hover:border-[#4ECDC4] hover:text-[#4ECDC4] transition-colors"
+                  >
+                    {showMapPanel ? 'Hide Map' : 'Show Map'}
+                  </button>
+                </div>
+
+                {/* Day Selector */}
+                <div className="flex items-center gap-4 overflow-x-auto pb-4">
+                    {dailyPlans.map((day, index) => {
                     return (
                       <button
                         key={day.id}
@@ -1288,12 +1391,12 @@ const parseLocalDate = (value) => {
                       
                       <div className="border-t pt-4">
                         <h4 className="font-medium mb-3">Transportation from previous place</h4>
-                        {googleMapsApiKey && selectedDayData && selectedDayData.places.length > 0 && (
+                            {mapsApiKey && selectedDayData && selectedDayData.places.length > 0 && (
                           <div className="mb-3 p-3 bg-blue-50 rounded-lg text-sm text-blue-700">
                             ℹ️ Distance and time will be automatically calculated when you add this place
                           </div>
                         )}
-                        {!googleMapsApiKey && selectedDayData && selectedDayData.places.length > 0 && (
+                            {!mapsApiKey && selectedDayData && selectedDayData.places.length > 0 && (
                           <div className="mb-3 p-3 bg-yellow-50 rounded-lg text-sm text-yellow-700">
                             ⚠️ Set up Google Maps API to auto-calculate distance and time
                           </div>
@@ -1313,7 +1416,7 @@ const parseLocalDate = (value) => {
                           </select>
                           <input
                             type="number"
-                            placeholder={googleMapsApiKey ? "Auto-calculated" : "Time (minutes)"}
+                            placeholder={mapsApiKey ? "Auto-calculated" : "Time (minutes)"}
                             value={placeForm.transportTime}
                             onChange={(e) => setPlaceForm({ ...placeForm, transportTime: e.target.value })}
                             className="px-3 py-2 border rounded-lg"
@@ -1322,7 +1425,7 @@ const parseLocalDate = (value) => {
                           <input
                             type="number"
                             step="0.1"
-                            placeholder={googleMapsApiKey ? "Auto-calculated" : "Distance (km)"}
+                            placeholder={mapsApiKey ? "Auto-calculated" : "Distance (km)"}
                             value={placeForm.distance}
                             onChange={(e) => setPlaceForm({ ...placeForm, distance: e.target.value })}
                             className="px-3 py-2 border rounded-lg"
@@ -1370,6 +1473,62 @@ const parseLocalDate = (value) => {
                 </div>
               )}
             </div>
+
+            <div className={`${showMapPanel ? 'block' : 'hidden'} lg:block`}>
+              <div className="bg-white border rounded-2xl shadow-md p-3 sm:p-4 lg:sticky lg:top-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <MapIcon size={18} className="text-[#4ECDC4]" />
+                    <div>
+                      <p className="text-sm font-semibold text-gray-900">Day Map</p>
+                      <p className="text-xs text-gray-500">
+                        {selectedDayData ? parseLocalDate(selectedDayData.date).toLocaleDateString() : 'Select a day to view pins'}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setShowMapPanel(false)}
+                    className="p-2 rounded-full hover:bg-gray-100 transition-colors"
+                    title="Hide map"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+
+                {!mapsApiKey && (
+                  <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800">
+                    Add your Google Maps API key in the menu to see places on the map.
+                  </div>
+                )}
+
+                {mapsApiKey && !mapsReady && (
+                  <div className="p-4 text-center text-sm text-gray-500">Loading map...</div>
+                )}
+
+                {mapsApiKey && mapsReady && (
+                  <>
+                    {!selectedDayData?.places?.length ? (
+                      <div className="p-4 text-sm text-gray-500 bg-gray-50 rounded-lg border border-dashed">
+                        Add places to this day to see pins here.
+                      </div>
+                    ) : (
+                      <div className="relative">
+                        <div
+                          ref={mapRef}
+                          className="w-full h-72 sm:h-80 lg:h-[500px] rounded-xl overflow-hidden bg-gray-100"
+                        />
+                        {mapLoading && (
+                          <div className="absolute inset-0 bg-white/60 flex items-center justify-center text-sm text-gray-600">
+                            Mapping your stops...
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
           )}
 
           {/* FLIGHTS TAB */}
@@ -1871,7 +2030,7 @@ const parseLocalDate = (value) => {
                   </label>
                   <input
                     type="text"
-                    value={googleMapsApiKey}
+                    value={mapsApiKey}
                     onChange={(e) => setGoogleMapsApiKey(e.target.value)}
                     placeholder="Enter your API key here"
                     className="w-full px-3 py-2 border rounded-lg font-mono text-sm"
@@ -1880,22 +2039,14 @@ const parseLocalDate = (value) => {
               </div>
               
               <div className="flex flex-col sm:flex-row gap-3">
-                <button
-                  onClick={() => {
-                    if (googleMapsApiKey) {
-                      localStorage.setItem('googleMapsApiKey', googleMapsApiKey);
-                    }
-                    setShowApiKeyModal(false);
-                  }}
-                  className="flex-1 px-4 py-2 bg-gradient-to-r from-[#4ECDC4] to-[#44A08D] text-white rounded-xl hover:shadow-lg transition-all text-sm sm:text-base font-medium"
-                >
-                  Save API Key
-                </button>
+                <div className="flex-1 px-4 py-2 text-center text-sm text-gray-500">
+                  API key is provided via environment. No need to paste it here.
+                </div>
                 <button
                   onClick={() => setShowApiKeyModal(false)}
                   className="flex-1 px-4 py-2 border-2 border-gray-200 rounded-xl hover:bg-gray-50 text-sm sm:text-base transition-all"
                 >
-                  Cancel
+                  Close
                 </button>
               </div>
             </div>
