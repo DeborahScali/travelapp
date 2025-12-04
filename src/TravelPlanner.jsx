@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { DateRange } from 'react-date-range';
 import 'react-date-range/dist/styles.css';
 import 'react-date-range/dist/theme/default.css';
-import { Plus, Trash2, MapPin, Plane, DollarSign, TrendingUp, Calendar, Navigation, Train, Map, LogOut, User, ArrowLeft } from 'lucide-react';
+import { Plus, Trash2, MapPin, Plane, DollarSign, TrendingUp, Calendar, Navigation, Train, Map as MapIcon, LogOut, User, ArrowLeft } from 'lucide-react';
 import { useAuth } from './contexts/AuthContext';
 import { useTrips, useCurrentTrip, useFlights, useDailyPlans, useExpenses } from './hooks/useFirestore';
 
@@ -63,7 +63,7 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {} }) => {
   const { trips, loading: tripsLoading, saveTrip, deleteTrip: deleteTripFromFirestore } = useTrips();
   const { currentTrip, loading: currentTripLoading, saveCurrentTrip } = useCurrentTrip();
   const { flights, loading: flightsLoading, saveFlight, deleteFlight: deleteFlightFromFirestore, setFlights } = useFlights();
-  const { dailyPlans, loading: plansLoading, saveDailyPlan, saveDailyPlans, setDailyPlans } = useDailyPlans();
+  const { dailyPlans, loading: plansLoading, saveDailyPlan, saveDailyPlans, replaceDailyPlans, setDailyPlans } = useDailyPlans();
   const { expenses, loading: expensesLoading, saveExpense, deleteExpense: deleteExpenseFromFirestore, setExpenses } = useExpenses();
 
   const [activeTab, setActiveTab] = useState('itinerary');
@@ -125,13 +125,13 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {} }) => {
     if (currentTrip && dailyPlans.length === 0 && !plansLoading) {
       const generateDailyPlans = async () => {
         const days = [];
-        const start = new Date(currentTrip.startDate);
-        const end = new Date(currentTrip.endDate);
+        const start = parseLocalDate(currentTrip.startDate);
+        const end = parseLocalDate(currentTrip.endDate);
         let current = new Date(start);
         let dayId = 1;
 
         while (current <= end) {
-          const dateStr = current.toISOString().split('T')[0];
+          const dateStr = formatDateLocal(current);
           days.push({
             id: dayId++,
             date: dateStr,
@@ -144,7 +144,7 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {} }) => {
         }
 
         try {
-          await saveDailyPlans(days);
+          await replaceDailyPlans(days);
           if (days.length > 0) {
             setSelectedDay(days[0].id);
           }
@@ -163,6 +163,49 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {} }) => {
       setSelectedDay(dailyPlans[0].id);
     }
   }, [dailyPlans, selectedDay]);
+
+  // Ensure daily plans align with the current trip date range even if older data exists.
+  useEffect(() => {
+    if (!currentTrip || plansLoading || dailyPlans.length === 0) return;
+
+    const start = parseLocalDate(currentTrip.startDate);
+    const end = parseLocalDate(currentTrip.endDate);
+    const expectedStart = formatDateLocal(start);
+    const expectedEnd = formatDateLocal(end);
+    const dayCount = Math.floor((end - start) / (1000 * 60 * 60 * 24)) + 1;
+
+    // dailyPlans is sorted by date in the hook
+    const actualStart = dailyPlans[0]?.date;
+    const actualEnd = dailyPlans[dailyPlans.length - 1]?.date;
+
+    if (actualStart !== expectedStart || actualEnd !== expectedEnd || dailyPlans.length !== dayCount) {
+      const mapByDate = new Map(dailyPlans.map(d => [d.date, d]));
+      const regenerated = [];
+      let current = new Date(start);
+      let id = 1;
+      while (current <= end) {
+        const dateStr = formatDateLocal(current);
+        const existing = mapByDate.get(dateStr);
+        regenerated.push({
+          id: id++,
+          date: dateStr,
+          title: existing?.title || '',
+          city: existing?.city || '',
+          country: existing?.country || '',
+          places: existing?.places || []
+        });
+        current.setDate(current.getDate() + 1);
+      }
+
+      replaceDailyPlans(regenerated).then(() => {
+        if (regenerated.length > 0) {
+          setSelectedDay(regenerated[0].id);
+        }
+      }).catch(err => {
+        console.error('Failed to realign daily plans with trip dates:', err);
+      });
+    }
+  }, [currentTrip, plansLoading, dailyPlans]);
 
   // Flight form state
   const [flightForm, setFlightForm] = useState({
@@ -495,19 +538,34 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {} }) => {
       endDate: currentTrip.endDate 
     });
     // initialize dateRange from currentTrip using local dates to avoid timezone shifts
-    const start = currentTrip?.startDate ? new Date(currentTrip.startDate) : new Date();
-    const end = currentTrip?.endDate ? new Date(currentTrip.endDate) : new Date();
+    const start = currentTrip?.startDate ? parseLocalDate(currentTrip.startDate) : new Date();
+    const end = currentTrip?.endDate ? parseLocalDate(currentTrip.endDate) : new Date();
     setDateRange([{ startDate: start, endDate: end, key: 'selection' }]);
     setEditingTripDates(true);
   };
 
-  // helper: format a Date into local YYYY-MM-DD without timezone shifting
-  const formatDateLocal = (d) => {
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  };
+// helper: format a Date into local YYYY-MM-DD without timezone shifting
+const formatDateLocal = (d) => {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+// helper: parse a stored YYYY-MM-DD string into a local Date (avoids UTC shift)
+const parseLocalDate = (value) => {
+  if (!value) return new Date();
+  if (value instanceof Date) {
+    return new Date(value.getFullYear(), value.getMonth(), value.getDate());
+  }
+  if (typeof value === 'string') {
+    const [y, m, d] = value.split('-').map(Number);
+    if (!Number.isNaN(y) && !Number.isNaN(m) && !Number.isNaN(d)) {
+      return new Date(y, m - 1, d);
+    }
+  }
+  return new Date(value);
+};
 
   const handleSaveTripName = async () => {
     if (tripForm.name.trim() && currentTrip) {
@@ -546,13 +604,13 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {} }) => {
         // Regenerate daily plans if dates changed
         if (startDateToSave !== currentTrip.startDate || endDateToSave !== currentTrip.endDate) {
           const days = [];
-          const start = new Date(startDateToSave);
-          const end = new Date(endDateToSave);
+          const start = parseLocalDate(startDateToSave);
+          const end = parseLocalDate(endDateToSave);
           let current = new Date(start);
           let dayId = 1;
 
           while (current <= end) {
-            const dateStr = current.toISOString().split('T')[0];
+            const dateStr = formatDateLocal(current);
             const existingDay = dailyPlans.find(d => d.date === dateStr);
 
             days.push({
@@ -566,7 +624,7 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {} }) => {
             current.setDate(current.getDate() + 1);
           }
 
-          await saveDailyPlans(days);
+          await replaceDailyPlans(days);
           setSelectedDay(days[0]?.id);
         }
       } catch (error) {
@@ -606,13 +664,13 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {} }) => {
       // Regenerate daily plans if dates changed
       if (tripForm.startDate !== currentTrip.startDate || tripForm.endDate !== currentTrip.endDate) {
         const days = [];
-        const start = new Date(tripForm.startDate);
-        const end = new Date(tripForm.endDate);
+        const start = parseLocalDate(tripForm.startDate);
+        const end = parseLocalDate(tripForm.endDate);
         let current = new Date(start);
         let dayId = 1;
 
         while (current <= end) {
-          const dateStr = current.toISOString().split('T')[0];
+          const dateStr = formatDateLocal(current);
           // Try to find existing day data
           const existingDay = dailyPlans.find(d => d.date === dateStr);
 
@@ -627,7 +685,7 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {} }) => {
           current.setDate(current.getDate() + 1);
         }
 
-        await saveDailyPlans(days);
+        await replaceDailyPlans(days);
         setSelectedDay(days[0]?.id);
       }
 
@@ -795,7 +853,7 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {} }) => {
                         className="cursor-pointer hover:bg-white/20 px-3 py-1 rounded transition-colors inline-block"
                       >
                         <span className="text-sm text-white/90">
-                          {new Date(currentTrip.startDate).toLocaleDateString()} - {new Date(currentTrip.endDate).toLocaleDateString()}
+                          {parseLocalDate(currentTrip.startDate).toLocaleDateString()} - {parseLocalDate(currentTrip.endDate).toLocaleDateString()}
                         </span>
                       </div>
                     )}
@@ -847,7 +905,7 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {} }) => {
                         onClick={() => { setShowApiKeyModal(true); setShowUserMenu(false); }}
                         className="w-full text-left px-3 py-2 hover:bg-gray-50 flex items-center gap-2"
                       >
-                        <Map size={16} className="text-gray-600" />
+                        <MapIcon size={16} className="text-gray-600" />
                         <span className="text-sm text-gray-700">Setup API</span>
                       </button>
                       <button
@@ -952,8 +1010,8 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {} }) => {
                             : 'border-gray-200 hover:border-[#FF6B6B]/50 hover:shadow-sm'
                         }`}
                       >
-                        <div className="font-medium">{new Date(day.date).toLocaleDateString('en-US', { weekday: 'short' })}</div>
-                        <div className="text-sm">{new Date(day.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
+                        <div className="font-medium">{parseLocalDate(day.date).toLocaleDateString('en-US', { weekday: 'short' })}</div>
+                        <div className="text-sm">{parseLocalDate(day.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
                       </button>
                     );
                   })}
@@ -964,7 +1022,7 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {} }) => {
                   {/* Day Info */}
                   <div className="mb-6 p-4 bg-gray-50 rounded-lg">
                     <h3 className="text-xl font-bold mb-3">
-                      {new Date(selectedDayData.date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                      {parseLocalDate(selectedDayData.date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
                     </h3>
                     
                     {/* Day Title - Inline Edit */}
@@ -1127,7 +1185,7 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {} }) => {
                                   className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"
                                   title="Open in Google Maps"
                                 >
-                                  <Map size={18} />
+                                  <MapIcon size={18} />
                                 </button>
                                 <button
                                   onClick={(e) => {
@@ -1176,7 +1234,7 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {} }) => {
                                     }}
                                     className="text-[#4ECDC4] hover:underline flex items-center gap-1 whitespace-nowrap"
                                   >
-                                    <Map size={14} />
+                                    <MapIcon size={14} />
                                     <span className="hidden sm:inline">Get Directions</span>
                                     <span className="sm:hidden">Route</span>
                                   </button>

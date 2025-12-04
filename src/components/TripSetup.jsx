@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { DateRange } from 'react-date-range';
-import { MapPin, Plus, X, Calendar, GripVertical, Clock } from 'lucide-react';
+import { MapPin, Plus, X, Calendar, GripVertical, Clock, Trash2 } from 'lucide-react';
 import { useTrips } from '../hooks/useFirestore';
 import 'react-date-range/dist/styles.css';
 import 'react-date-range/dist/theme/default.css';
@@ -67,7 +67,7 @@ const COUNTRIES = {
 };
 
 const TripSetup = ({ onCreateTrip }) => {
-  const { trips, loading: tripsLoading } = useTrips();
+  const { trips, loading: tripsLoading, deleteTrip } = useTrips();
   const [selectedCountries, setSelectedCountries] = useState([]);
   const [showCountryDropdown, setShowCountryDropdown] = useState(false);
   const [countrySearch, setCountrySearch] = useState('');
@@ -80,6 +80,8 @@ const TripSetup = ({ onCreateTrip }) => {
   const [customTripName, setCustomTripName] = useState('');
   const [isEditingName, setIsEditingName] = useState(false);
   const [draggedIndex, setDraggedIndex] = useState(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [tripToDelete, setTripToDelete] = useState(null);
   const datePickerRef = useRef(null);
   const countryDropdownRef = useRef(null);
 
@@ -215,6 +217,24 @@ const TripSetup = ({ onCreateTrip }) => {
     // Set the existing trip as current trip
     console.log('TripSetup: selecting existing trip', trip);
     await onCreateTrip(trip);
+  };
+
+  const confirmDeleteTrip = (trip) => {
+    setTripToDelete(trip);
+    setShowDeleteModal(true);
+  };
+
+  const handleDeleteTrip = async () => {
+    if (!tripToDelete) return;
+    try {
+      await deleteTrip(tripToDelete.id);
+    } catch (error) {
+      console.error('Failed to delete trip:', error);
+      alert('Failed to delete trip. Please try again.');
+    } finally {
+      setShowDeleteModal(false);
+      setTripToDelete(null);
+    }
   };
 
   // Sort trips by most recent first
@@ -421,60 +441,103 @@ const TripSetup = ({ onCreateTrip }) => {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {recentTrips.map((trip) => (
-                <button
+                <div
                   key={trip.id}
-                  onClick={() => handleSelectExistingTrip(trip)}
-                  className="bg-white rounded-2xl shadow-md hover:shadow-xl border-2 border-gray-50 hover:border-[#4ECDC4] p-5 text-left transition-all hover:scale-[1.02] group"
+                  className="bg-white rounded-2xl shadow-md hover:shadow-xl border-2 border-gray-50 hover:border-[#4ECDC4] p-5 text-left transition-all hover:scale-[1.02] group relative"
                 >
-                  <div className="flex items-start justify-between mb-3">
-                    <h3 className="font-bold text-lg text-gray-900 line-clamp-2 group-hover:text-[#4ECDC4] transition-colors">
-                      {trip.name}
-                    </h3>
-                  </div>
+                  <button
+                    onClick={() => confirmDeleteTrip(trip)}
+                    className="absolute top-3 right-3 p-2 rounded-full hover:bg-red-50 text-red-500 transition-colors"
+                    title="Delete trip"
+                  >
+                    <Trash2 size={18} />
+                  </button>
 
-                  <div className="space-y-2 text-sm">
-                    <div className="flex items-center gap-2 text-gray-600">
-                      <Calendar size={14} className="text-[#4ECDC4]" />
-                      <span>
-                        {new Date(trip.startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                        {' - '}
-                        {new Date(trip.endDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                      </span>
+                  <button
+                    onClick={() => handleSelectExistingTrip(trip)}
+                    className="w-full text-left"
+                  >
+                    <div className="flex items-start justify-between mb-3 pr-6">
+                      <h3 className="font-bold text-lg text-gray-900 line-clamp-2 group-hover:text-[#4ECDC4] transition-colors">
+                        {trip.name}
+                      </h3>
                     </div>
 
-                    {trip.countries && trip.countries.length > 0 && (
-                      <div className="flex items-center gap-2">
-                        <MapPin size={14} className="text-[#FF6B6B]" />
-                        <div className="flex flex-wrap gap-1">
-                          {trip.countries.slice(0, 2).map((country, idx) => (
-                            <span
-                              key={idx}
-                              className="text-xs px-2 py-1 bg-gradient-to-r from-[#FF6B6B]/10 to-[#FF8E53]/10 text-[#FF6B6B] rounded-full font-medium"
-                            >
-                              {country}
-                            </span>
-                          ))}
-                          {trip.countries.length > 2 && (
-                            <span className="text-xs px-2 py-1 bg-gray-100 text-gray-600 rounded-full font-medium">
-                              +{trip.countries.length - 2}
-                            </span>
-                          )}
-                        </div>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex items-center gap-2 text-gray-600">
+                        <Calendar size={14} className="text-[#4ECDC4]" />
+                        <span>
+                          {new Date(trip.startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                          {' - '}
+                          {new Date(trip.endDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                        </span>
                       </div>
-                    )}
-                  </div>
 
-                  <div className="mt-4 pt-3 border-t border-gray-100">
-                    <span className="text-xs text-[#4ECDC4] font-medium group-hover:underline">
-                      Continue Planning →
-                    </span>
-                  </div>
-                </button>
+                      {trip.countries && trip.countries.length > 0 && (
+                        <div className="flex items-center gap-2">
+                          <MapPin size={14} className="text-[#FF6B6B]" />
+                          <div className="flex flex-wrap gap-1">
+                            {trip.countries.slice(0, 2).map((country, idx) => (
+                              <span
+                                key={idx}
+                                className="text-xs px-2 py-1 bg-gradient-to-r from-[#FF6B6B]/10 to-[#FF8E53]/10 text-[#FF6B6B] rounded-full font-medium"
+                              >
+                                {country}
+                              </span>
+                            ))}
+                            {trip.countries.length > 2 && (
+                              <span className="text-xs px-2 py-1 bg-gray-100 text-gray-600 rounded-full font-medium">
+                                +{trip.countries.length - 2}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="mt-4 pt-3 border-t border-gray-100">
+                      <span className="text-xs text-[#4ECDC4] font-medium group-hover:underline">
+                        Continue Planning →
+                      </span>
+                    </div>
+                  </button>
+                </div>
               ))}
             </div>
           </div>
         )}
       </div>
+
+      {/* Delete Trip Modal */}
+      {showDeleteModal && tripToDelete && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
+          <div className="bg-white rounded-2xl p-6 shadow-2xl max-w-md w-full">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center">
+                <Trash2 className="text-red-500" size={20} />
+              </div>
+              <h3 className="text-xl font-semibold text-gray-900">Delete trip?</h3>
+            </div>
+            <p className="text-gray-600 mb-6">
+              "{tripToDelete.name}" will be removed from your trips. This action cannot be undone.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-3">
+              <button
+                onClick={handleDeleteTrip}
+                className="flex-1 px-4 py-3 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-xl hover:shadow-lg transition-all"
+              >
+                Delete Trip
+              </button>
+              <button
+                onClick={() => { setShowDeleteModal(false); setTripToDelete(null); }}
+                className="flex-1 px-4 py-3 border-2 border-gray-200 rounded-xl hover:bg-gray-50 transition-all"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

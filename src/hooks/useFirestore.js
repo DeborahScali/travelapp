@@ -281,7 +281,35 @@ export const useDailyPlans = () => {
     }
   };
 
-  return { dailyPlans, loading, saveDailyPlan, saveDailyPlans, setDailyPlans, reloadDailyPlans: loadDailyPlans };
+  const replaceDailyPlans = async (plans) => {
+    try {
+      const plansRef = collection(db, 'users', currentUser.uid, 'dailyPlans');
+      const existingSnap = await getDocs(plansRef);
+      const idsToKeep = new Set(plans.map(p => p.id.toString()));
+
+      const deletePromises = existingSnap.docs
+        .filter(docSnap => !idsToKeep.has(docSnap.id))
+        .map(docSnap => deleteDoc(docSnap.ref));
+
+      const writePromises = plans.map(plan =>
+        setDoc(
+          doc(db, 'users', currentUser.uid, 'dailyPlans', plan.id.toString()),
+          {
+            ...plan,
+            updatedAt: serverTimestamp()
+          }
+        )
+      );
+
+      await Promise.all([...deletePromises, ...writePromises]);
+      await loadDailyPlans();
+    } catch (err) {
+      console.error('Error replacing daily plans:', err);
+      throw err;
+    }
+  };
+
+  return { dailyPlans, loading, saveDailyPlan, saveDailyPlans, replaceDailyPlans, setDailyPlans, reloadDailyPlans: loadDailyPlans };
 };
 
 // Custom hook for expenses
