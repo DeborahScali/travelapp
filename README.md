@@ -59,6 +59,83 @@ npm run build
 
 The built files will be in the `dist` folder.
 
+## Firebase Setup (Required)
+
+This app uses Firebase for authentication and data storage. Follow these steps to set up Firebase:
+
+### 1. Create Firebase Project
+
+1. Go to [Firebase Console](https://console.firebase.google.com)
+2. Click "Add project" and enter a project name (e.g., "travel-planner")
+3. Disable Google Analytics (optional) or keep it enabled
+4. Click "Create project"
+
+### 2. Register Web App
+
+1. In your Firebase project, click the Web icon (`</>`) to add a web app
+2. Enter app nickname: "Travel Planner Web"
+3. Don't check "Firebase Hosting" (we use GitHub Pages)
+4. Click "Register app"
+5. Copy the Firebase configuration values - you'll need them next
+
+### 3. Enable Google Authentication
+
+1. In Firebase Console, go to **Authentication** → **Get started**
+2. Click **Sign-in method** tab
+3. Enable **Google** provider
+4. Select a support email
+5. Click **Save**
+
+### 4. Create Firestore Database
+
+1. Go to **Firestore Database** → **Create database**
+2. Select **Start in production mode**
+3. Choose a location (closest to you)
+4. Click **Enable**
+
+### 5. Set Firestore Security Rules
+
+1. In Firestore, go to **Rules** tab
+2. Replace existing rules with:
+
+\`\`\`javascript
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /users/{userId}/{document=**} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+  }
+}
+\`\`\`
+
+3. Click **Publish**
+
+### 6. Configure Environment Variables
+
+1. Copy `.env.example` to `.env`:
+\`\`\`bash
+cp .env.example .env
+\`\`\`
+
+2. Open `.env` and add your Firebase configuration values from step 2:
+\`\`\`env
+VITE_FIREBASE_API_KEY=your_api_key
+VITE_FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=your-project-id
+VITE_FIREBASE_STORAGE_BUCKET=your-project.appspot.com
+VITE_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
+VITE_FIREBASE_APP_ID=your_app_id
+\`\`\`
+
+### 7. Add Authorized Domain (for GitHub Pages)
+
+1. Go to **Authentication** → **Settings** → **Authorized domains**
+2. Add your GitHub Pages domain: `YOUR_USERNAME.github.io`
+3. Click **Add domain**
+
+Now you're ready to run the app locally or deploy it!
+
 ## Deployment to GitHub Pages
 
 This project is configured for automatic deployment to GitHub Pages using GitHub Actions.
@@ -71,20 +148,28 @@ This project is configured for automatic deployment to GitHub Pages using GitHub
    - If your repo URL is `https://github.com/username/travelapp`
    - Then the base should be `/travelapp/` (already configured)
 
-3. **Enable GitHub Pages** in your repository:
+3. **Add Firebase secrets to GitHub**:
+   - Go to your repository → **Settings** → **Secrets and variables** → **Actions**
+   - Click **New repository secret** and add each of these:
+     - `VITE_FIREBASE_API_KEY`
+     - `VITE_FIREBASE_AUTH_DOMAIN`
+     - `VITE_FIREBASE_PROJECT_ID`
+     - `VITE_FIREBASE_STORAGE_BUCKET`
+     - `VITE_FIREBASE_MESSAGING_SENDER_ID`
+     - `VITE_FIREBASE_APP_ID`
+
+4. **Enable GitHub Pages** in your repository:
    - Go to Settings > Pages
    - Under "Build and deployment", select "GitHub Actions" as the source
 
-4. **Push your code**:
+5. **Push your code**:
 \`\`\`bash
 git add .
-git commit -m "Initial commit"
-git branch -M main
-git remote add origin https://github.com/YOUR_USERNAME/travelapp.git
-git push -u origin main
+git commit -m "Add Firebase authentication"
+git push
 \`\`\`
 
-5. **Wait for deployment**:
+6. **Wait for deployment**:
    - GitHub Actions will automatically build and deploy your app
    - Check the "Actions" tab to monitor progress
    - Your app will be live at `https://YOUR_USERNAME.github.io/travelapp/`

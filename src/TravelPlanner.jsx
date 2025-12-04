@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, MapPin, Plane, DollarSign, TrendingUp, Calendar, Navigation, Train, Map } from 'lucide-react';
+import { Plus, Trash2, MapPin, Plane, DollarSign, TrendingUp, Calendar, Navigation, Train, Map, LogOut, User } from 'lucide-react';
+import { useAuth } from './contexts/AuthContext';
+import { useTrips, useCurrentTrip, useFlights, useDailyPlans, useExpenses } from './hooks/useFirestore';
 
 // Cities database for Switzerland, Italy, and France
 const CITIES_DATABASE = {
@@ -41,12 +43,17 @@ const ALL_CITIES = Object.entries(CITIES_DATABASE).flatMap(([country, cities]) =
 );
 
 const TravelPlanner = () => {
+  // Authentication
+  const { currentUser, signOut } = useAuth();
+
+  // Firestore hooks
+  const { trips, loading: tripsLoading, saveTrip, deleteTrip: deleteTripFromFirestore } = useTrips();
+  const { currentTrip, loading: currentTripLoading, saveCurrentTrip } = useCurrentTrip();
+  const { flights, loading: flightsLoading, saveFlight, deleteFlight: deleteFlightFromFirestore, setFlights } = useFlights();
+  const { dailyPlans, loading: plansLoading, saveDailyPlan, saveDailyPlans, setDailyPlans } = useDailyPlans();
+  const { expenses, loading: expensesLoading, saveExpense, deleteExpense: deleteExpenseFromFirestore, setExpenses } = useExpenses();
+
   const [activeTab, setActiveTab] = useState('itinerary');
-  const [trips, setTrips] = useState([]);
-  const [currentTrip, setCurrentTrip] = useState(null);
-  const [flights, setFlights] = useState([]);
-  const [dailyPlans, setDailyPlans] = useState([]);
-  const [expenses, setExpenses] = useState([]);
   const [showAddFlight, setShowAddFlight] = useState(false);
   const [showAddPlace, setShowAddPlace] = useState(false);
   const [showAddExpense, setShowAddExpense] = useState(false);
@@ -73,64 +80,20 @@ const TravelPlanner = () => {
     endDate: ''
   });
 
-  // Initialize with sample data and load from localStorage
+  // Load Google Maps API key from localStorage (not user-specific)
   useEffect(() => {
-    // Load API key from localStorage
     const savedApiKey = localStorage.getItem('googleMapsApiKey');
     if (savedApiKey) {
       setGoogleMapsApiKey(savedApiKey);
     }
-
-    // Try to load saved data from localStorage
-    const savedTrips = localStorage.getItem('travelPlanner_trips');
-    const savedCurrentTrip = localStorage.getItem('travelPlanner_currentTrip');
-    const savedDailyPlans = localStorage.getItem('travelPlanner_dailyPlans');
-    const savedFlights = localStorage.getItem('travelPlanner_flights');
-    const savedExpenses = localStorage.getItem('travelPlanner_expenses');
-
-    if (savedTrips && savedCurrentTrip && savedDailyPlans) {
-      // Load existing data
-      setTrips(JSON.parse(savedTrips));
-      setCurrentTrip(JSON.parse(savedCurrentTrip));
-      setDailyPlans(JSON.parse(savedDailyPlans));
-      setFlights(savedFlights ? JSON.parse(savedFlights) : []);
-      setExpenses(savedExpenses ? JSON.parse(savedExpenses) : []);
-      
-      const plans = JSON.parse(savedDailyPlans);
-      setSelectedDay(plans[0]?.id);
-    } else {
-      // Initialize with sample data if no saved data exists
-      const sampleTrip = {
-        id: 1,
-        name: 'European Adventure 2026',
-        startDate: '2026-04-15',
-        endDate: '2026-05-02'
-      };
-      setTrips([sampleTrip]);
-      setCurrentTrip(sampleTrip);
-      
-      // Generate days for the trip
-      const days = [];
-      const start = new Date('2026-04-15');
-      const end = new Date('2026-05-02');
-      let current = new Date(start);
-      
-      while (current <= end) {
-        days.push({
-          id: days.length + 1,
-          date: current.toISOString().split('T')[0],
-          title: '',
-          city: '',
-          country: '',
-          places: []
-        });
-        current.setDate(current.getDate() + 1);
-      }
-      
-      setDailyPlans(days);
-      setSelectedDay(days[0]?.id);
-    }
   }, []);
+
+  // Set selected day when daily plans are loaded
+  useEffect(() => {
+    if (dailyPlans && dailyPlans.length > 0 && !selectedDay) {
+      setSelectedDay(dailyPlans[0].id);
+    }
+  }, [dailyPlans, selectedDay]);
 
   // Flight form state
   const [flightForm, setFlightForm] = useState({
@@ -168,23 +131,28 @@ const TravelPlanner = () => {
     currency: 'USD'
   });
 
-  const handleAddFlight = () => {
+  const handleAddFlight = async () => {
     const newFlight = {
       id: Date.now(),
       ...flightForm
     };
-    setFlights([...flights, newFlight]);
-    setFlightForm({
-      airline: '',
-      flightNumber: '',
-      from: '',
-      to: '',
-      date: '',
-      departureTime: '',
-      arrivalTime: '',
-      bookingRef: ''
-    });
-    setShowAddFlight(false);
+    try {
+      await saveFlight(newFlight);
+      setFlightForm({
+        airline: '',
+        flightNumber: '',
+        from: '',
+        to: '',
+        date: '',
+        departureTime: '',
+        arrivalTime: '',
+        bookingRef: ''
+      });
+      setShowAddFlight(false);
+    } catch (error) {
+      console.error('Failed to add flight:', error);
+      alert('Failed to add flight. Please try again.');
+    }
   };
 
   const handleAddPlace = async () => {
@@ -233,24 +201,29 @@ const TravelPlanner = () => {
     setShowAddPlace(false);
   };
 
-  const handleAddExpense = () => {
+  const handleAddExpense = async () => {
     const newExpense = {
       id: Date.now(),
       ...expenseForm
     };
-    setExpenses([...expenses, newExpense]);
-    setExpenseForm({
-      description: '',
-      amount: '',
-      category: 'food',
-      date: '',
-      city: '',
-      country: '',
-      currency: 'USD'
-    });
-    setExpenseCitySearch('');
-    setExpenseCountrySearch('');
-    setShowAddExpense(false);
+    try {
+      await saveExpense(newExpense);
+      setExpenseForm({
+        description: '',
+        amount: '',
+        category: 'food',
+        date: '',
+        city: '',
+        country: '',
+        currency: 'USD'
+      });
+      setExpenseCitySearch('');
+      setExpenseCountrySearch('');
+      setShowAddExpense(false);
+    } catch (error) {
+      console.error('Failed to add expense:', error);
+      alert('Failed to add expense. Please try again.');
+    }
   };
 
   const handleDeletePlace = (dayId, placeId) => {
@@ -266,12 +239,22 @@ const TravelPlanner = () => {
     setDailyPlans(updatedPlans);
   };
 
-  const handleDeleteFlight = (flightId) => {
-    setFlights(flights.filter(f => f.id !== flightId));
+  const handleDeleteFlight = async (flightId) => {
+    try {
+      await deleteFlightFromFirestore(flightId);
+    } catch (error) {
+      console.error('Failed to delete flight:', error);
+      alert('Failed to delete flight. Please try again.');
+    }
   };
 
-  const handleDeleteExpense = (expenseId) => {
-    setExpenses(expenses.filter(e => e.id !== expenseId));
+  const handleDeleteExpense = async (expenseId) => {
+    try {
+      await deleteExpenseFromFirestore(expenseId);
+    } catch (error) {
+      console.error('Failed to delete expense:', error);
+      alert('Failed to delete expense. Please try again.');
+    }
   };
 
   const toggleVisited = (dayId, placeId) => {
@@ -360,31 +343,23 @@ const TravelPlanner = () => {
     }
   }, [googleMapsApiKey]);
 
-  // Save data to localStorage whenever it changes
+  // Auto-save to Firestore whenever data changes
   useEffect(() => {
-    if (trips.length > 0) {
-      localStorage.setItem('travelPlanner_trips', JSON.stringify(trips));
-    }
-  }, [trips]);
-
-  useEffect(() => {
-    if (currentTrip) {
-      localStorage.setItem('travelPlanner_currentTrip', JSON.stringify(currentTrip));
-    }
-  }, [currentTrip]);
-
-  useEffect(() => {
-    if (dailyPlans.length > 0) {
-      localStorage.setItem('travelPlanner_dailyPlans', JSON.stringify(dailyPlans));
+    if (dailyPlans.length > 0 && currentUser && !plansLoading) {
+      saveDailyPlans(dailyPlans).catch(err => console.error('Failed to save daily plans:', err));
     }
   }, [dailyPlans]);
 
   useEffect(() => {
-    localStorage.setItem('travelPlanner_flights', JSON.stringify(flights));
+    if (flights.length >= 0 && currentUser && !flightsLoading) {
+      // Individual flights are saved through saveFlight, we just need this for bulk operations
+    }
   }, [flights]);
 
   useEffect(() => {
-    localStorage.setItem('travelPlanner_expenses', JSON.stringify(expenses));
+    if (expenses.length >= 0 && currentUser && !expensesLoading) {
+      // Individual expenses are saved through saveExpense, we just need this for bulk operations
+    }
   }, [expenses]);
 
   // Filter cities based on search term
@@ -448,53 +423,60 @@ const TravelPlanner = () => {
     setEditingTripDates(true);
   };
 
-  const handleSaveTripName = () => {
-    if (tripForm.name.trim()) {
-      const updatedTrip = { ...currentTrip, name: tripForm.name };
-      setCurrentTrip(updatedTrip);
-      const updatedTrips = trips.map(t => t.id === currentTrip.id ? updatedTrip : t);
-      setTrips(updatedTrips);
+  const handleSaveTripName = async () => {
+    if (tripForm.name.trim() && currentTrip) {
+      try {
+        const updatedTrip = { ...currentTrip, name: tripForm.name };
+        await saveTrip(updatedTrip);
+        await saveCurrentTrip(updatedTrip);
+      } catch (error) {
+        console.error('Failed to save trip name:', error);
+        alert('Failed to save trip name. Please try again.');
+      }
     }
     setEditingTripName(false);
   };
 
-  const handleSaveTripDates = () => {
-    if (tripForm.startDate && tripForm.endDate) {
-      const updatedTrip = {
-        ...currentTrip,
-        startDate: tripForm.startDate,
-        endDate: tripForm.endDate
-      };
-      setCurrentTrip(updatedTrip);
-      
-      const updatedTrips = trips.map(t => t.id === currentTrip.id ? updatedTrip : t);
-      setTrips(updatedTrips);
+  const handleSaveTripDates = async () => {
+    if (tripForm.startDate && tripForm.endDate && currentTrip) {
+      try {
+        const updatedTrip = {
+          ...currentTrip,
+          startDate: tripForm.startDate,
+          endDate: tripForm.endDate
+        };
+        await saveTrip(updatedTrip);
+        await saveCurrentTrip(updatedTrip);
 
-      // Regenerate daily plans if dates changed
-      if (tripForm.startDate !== currentTrip.startDate || tripForm.endDate !== currentTrip.endDate) {
-        const days = [];
-        const start = new Date(tripForm.startDate);
-        const end = new Date(tripForm.endDate);
-        let current = new Date(start);
-        let dayId = 1;
-        
-        while (current <= end) {
-          const dateStr = current.toISOString().split('T')[0];
-          const existingDay = dailyPlans.find(d => d.date === dateStr);
-          
-          days.push({
-            id: dayId++,
-            date: dateStr,
-            title: existingDay?.title || '',
-            city: existingDay?.city || '',
-            country: existingDay?.country || '',
-            places: existingDay?.places || []
-          });
-          current.setDate(current.getDate() + 1);
+        // Regenerate daily plans if dates changed
+        if (tripForm.startDate !== currentTrip.startDate || tripForm.endDate !== currentTrip.endDate) {
+          const days = [];
+          const start = new Date(tripForm.startDate);
+          const end = new Date(tripForm.endDate);
+          let current = new Date(start);
+          let dayId = 1;
+
+          while (current <= end) {
+            const dateStr = current.toISOString().split('T')[0];
+            const existingDay = dailyPlans.find(d => d.date === dateStr);
+
+            days.push({
+              id: dayId++,
+              date: dateStr,
+              title: existingDay?.title || '',
+              city: existingDay?.city || '',
+              country: existingDay?.country || '',
+              places: existingDay?.places || []
+            });
+            current.setDate(current.getDate() + 1);
+          }
+
+          await saveDailyPlans(days);
+          setSelectedDay(days[0]?.id);
         }
-        
-        setDailyPlans(days);
-        setSelectedDay(days[0]?.id);
+      } catch (error) {
+        console.error('Failed to save trip dates:', error);
+        alert('Failed to save trip dates. Please try again.');
       }
     }
     setEditingTripDates(false);
@@ -513,51 +495,53 @@ const TravelPlanner = () => {
     setEditingDayTitle(false);
   };
 
-  const handleSaveTripEdit = () => {
-    // Update current trip
-    const updatedTrip = {
-      ...currentTrip,
-      name: tripForm.name,
-      startDate: tripForm.startDate,
-      endDate: tripForm.endDate
-    };
-    setCurrentTrip(updatedTrip);
-    
-    // Update trips list
-    const updatedTrips = trips.map(t => 
-      t.id === currentTrip.id ? updatedTrip : t
-    );
-    setTrips(updatedTrips);
+  const handleSaveTripEdit = async () => {
+    if (!currentTrip) return;
 
-    // Regenerate daily plans if dates changed
-    if (tripForm.startDate !== currentTrip.startDate || tripForm.endDate !== currentTrip.endDate) {
-      const days = [];
-      const start = new Date(tripForm.startDate);
-      const end = new Date(tripForm.endDate);
-      let current = new Date(start);
-      let dayId = 1;
-      
-      while (current <= end) {
-        const dateStr = current.toISOString().split('T')[0];
-        // Try to find existing day data
-        const existingDay = dailyPlans.find(d => d.date === dateStr);
-        
-        days.push({
-          id: dayId++,
-          date: dateStr,
-          title: existingDay?.title || '',
-          city: existingDay?.city || '',
-          country: existingDay?.country || '',
-          places: existingDay?.places || []
-        });
-        current.setDate(current.getDate() + 1);
+    try {
+      // Update current trip
+      const updatedTrip = {
+        ...currentTrip,
+        name: tripForm.name,
+        startDate: tripForm.startDate,
+        endDate: tripForm.endDate
+      };
+      await saveTrip(updatedTrip);
+      await saveCurrentTrip(updatedTrip);
+
+      // Regenerate daily plans if dates changed
+      if (tripForm.startDate !== currentTrip.startDate || tripForm.endDate !== currentTrip.endDate) {
+        const days = [];
+        const start = new Date(tripForm.startDate);
+        const end = new Date(tripForm.endDate);
+        let current = new Date(start);
+        let dayId = 1;
+
+        while (current <= end) {
+          const dateStr = current.toISOString().split('T')[0];
+          // Try to find existing day data
+          const existingDay = dailyPlans.find(d => d.date === dateStr);
+
+          days.push({
+            id: dayId++,
+            date: dateStr,
+            title: existingDay?.title || '',
+            city: existingDay?.city || '',
+            country: existingDay?.country || '',
+            places: existingDay?.places || []
+          });
+          current.setDate(current.getDate() + 1);
+        }
+
+        await saveDailyPlans(days);
+        setSelectedDay(days[0]?.id);
       }
-      
-      setDailyPlans(days);
-      setSelectedDay(days[0]?.id);
+
+      setShowEditTripModal(false);
+    } catch (error) {
+      console.error('Failed to save trip:', error);
+      alert('Failed to save trip. Please try again.');
     }
-    
-    setShowEditTripModal(false);
   };
 
   const openInGoogleMaps = (address) => {
@@ -708,12 +692,12 @@ const TravelPlanner = () => {
                 </div>
               )}
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 items-center">
               <button
                 onClick={() => setShowApiKeyModal(true)}
                 className={`px-3 sm:px-4 py-2 rounded-lg text-sm flex items-center gap-2 ${
-                  googleMapsApiKey 
-                    ? 'bg-green-100 text-green-700 hover:bg-green-200' 
+                  googleMapsApiKey
+                    ? 'bg-green-100 text-green-700 hover:bg-green-200'
                     : 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200'
                 }`}
               >
@@ -721,31 +705,55 @@ const TravelPlanner = () => {
                 <span className="hidden sm:inline">{googleMapsApiKey ? 'API Connected' : 'Setup API'}</span>
                 <span className="sm:hidden">API</span>
               </button>
-              <button
-                onClick={() => {
-                  if (window.confirm('Are you sure you want to clear ALL trip data? This cannot be undone!')) {
-                    localStorage.removeItem('travelPlanner_trips');
-                    localStorage.removeItem('travelPlanner_currentTrip');
-                    localStorage.removeItem('travelPlanner_dailyPlans');
-                    localStorage.removeItem('travelPlanner_flights');
-                    localStorage.removeItem('travelPlanner_expenses');
-                    window.location.reload();
-                  }
-                }}
-                className="px-3 sm:px-4 py-2 rounded-lg text-sm bg-red-100 text-red-700 hover:bg-red-200 flex items-center gap-2"
-                title="Clear all data"
-              >
-                <Trash2 size={18} />
-                <span className="hidden sm:inline">Clear Data</span>
-              </button>
+
+              {/* User Profile */}
+              {currentUser && (
+                <div className="flex items-center gap-2 border-l pl-2 ml-2">
+                  <div className="hidden sm:flex items-center gap-2">
+                    {currentUser.photoURL ? (
+                      <img
+                        src={currentUser.photoURL}
+                        alt={currentUser.displayName}
+                        className="w-8 h-8 rounded-full"
+                      />
+                    ) : (
+                      <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center">
+                        <User size={18} className="text-indigo-600" />
+                      </div>
+                    )}
+                    <span className="text-sm text-gray-700">{currentUser.displayName || currentUser.email}</span>
+                  </div>
+                  <button
+                    onClick={async () => {
+                      if (window.confirm('Are you sure you want to sign out?')) {
+                        await signOut();
+                      }
+                    }}
+                    className="px-3 sm:px-4 py-2 rounded-lg text-sm bg-gray-100 text-gray-700 hover:bg-gray-200 flex items-center gap-2"
+                    title="Sign out"
+                  >
+                    <LogOut size={18} />
+                    <span className="hidden sm:inline">Sign Out</span>
+                  </button>
+                </div>
+              )}
             </div>
           </div>
           
           {/* Data Status Indicator */}
           <div className="mt-3 pt-3 border-t">
             <div className="flex items-center gap-2 text-xs text-gray-500">
-              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-              <span>Auto-saving enabled • All changes are saved automatically</span>
+              {(tripsLoading || currentTripLoading || flightsLoading || plansLoading || expensesLoading) ? (
+                <>
+                  <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+                  <span>Loading your data...</span>
+                </>
+              ) : (
+                <>
+                  <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                  <span>Cloud sync enabled • Signed in as {currentUser?.email}</span>
+                </>
+              )}
             </div>
           </div>
         </div>
