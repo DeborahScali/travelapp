@@ -5,16 +5,19 @@ A comprehensive travel planning web application built with React, Vite, and Tail
 ## Features
 
 - **Flight Management** - Add/delete flights with airline, times, and booking references
-- **Daily Itinerary Planning** - Day-by-day organization with customizable titles
+- **Daily Itinerary Planning** - Day-by-day organization with customizable titles (default "Day 1", "Day 2", etc.)
 - **Google Maps Integration** - Automatic distance/time calculation between places
 - **Transportation Tracking** - Support for walking, metro, bus, train, and car with distances and times
 - **Expense Tracking** - Track expenses by category, city, and country
-- **Analytics Dashboard** - View expense and distance breakdowns
+- **Analytics Dashboard** - View expense and distance breakdowns by category, city, and country
 - **Visit Tracking** - Check off places as visited (they collapse when done)
 - **City/Country Autocomplete** - Built-in database with 180+ cities in Switzerland, Italy, and France
-- **Data Persistence** - Everything auto-saves to localStorage
+- **Google Authentication** - Sign in with your Google account
+- **Data Persistence** - All data auto-saves to the cloud via Firebase
 - **Mobile-Responsive** - Optimized for iPhone and all screen sizes
-- **Inline Editing** - Click to edit trip name, dates, and day titles
+- **Native iOS Feel** - Built with SF Pro font for authentic Apple experience
+- **Inline Editing** - Click to edit trip name, dates, and day titles (grey background for edit mode)
+- **Multi-device Access** - Access your trips from any device after signing in
 
 ## Tech Stack
 
@@ -22,7 +25,8 @@ A comprehensive travel planning web application built with React, Vite, and Tail
 - Vite
 - Tailwind CSS
 - Lucide Icons
-- Google Maps API (optional)
+- Firebase (Authentication & Firestore Database)
+- Google Maps API (for distance/time calculations)
 
 ## Getting Started
 
@@ -187,6 +191,15 @@ To enable automatic distance and travel time calculations:
 
 **Note:** Google provides $200 free credit per month.
 
+## Browser Support
+
+- Chrome/Edge (latest)
+- Firefox (latest)
+- Safari (latest)
+- Mobile browsers (iOS Safari, Chrome Mobile)
+
+**Recommended:** Use on iPhone for the best mobile experience with SF Pro font.
+
 ## Project Structure
 
 \`\`\`
@@ -207,12 +220,36 @@ travelapp/
 
 ## Usage Tips
 
-- **Trip Name & Dates**: Click on them to edit inline
+- **Trip Name & Dates**: Click on them to edit inline (grey background indicates edit mode)
 - **Day Titles**: Default to "Day 1", "Day 2", etc. Click to customize
-- **City/Country**: Type to see autocomplete suggestions
-- **Visit Tracking**: Click the checkbox to mark places as visited
+- **City/Country**: Type to see autocomplete suggestions from our 180+ city database
+- **Visit Tracking**: Click the checkbox to mark places as visited (they'll collapse)
 - **Google Maps**: Click the map icon to open locations or get directions
-- **Data Persistence**: All data is auto-saved to your browser
+- **Expenses**: Add expenses with amounts and they'll be automatically categorized and broken down by city/country
+- **Data Persistence**: All data is auto-saved to your Firebase account
+- **Sign Out**: Use the profile menu to safely sign out and access your data on other devices
+- **Google Maps API**: Optional - Click the "Setup API" button to enable automatic distance calculations
+
+## Troubleshooting
+
+### "Failed to sign in with Google"
+- Make sure your Firebase project has Google authentication enabled
+- Check that your authorized domains include your app's domain
+- Clear browser cache and try again
+
+### Data not syncing across devices
+- Ensure you've signed in with the same Google account
+- Data syncs when you open the app (not real-time)
+- Try refreshing the page
+
+### Google Maps not calculating distances
+- Click "Setup API" in the header to add your API key
+- Make sure your API key has Distance Matrix API enabled
+- Check the browser console for API errors
+
+### Data disappeared after signing out
+- Your data is saved in your Google account, not on this device
+- Sign back in with the same Google account to see your trips
 
 ## License
 
