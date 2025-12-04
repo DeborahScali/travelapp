@@ -1244,7 +1244,7 @@ const parseLocalDate = (value) => {
           
           {/* ITINERARY TAB */}
           {activeTab === 'itinerary' && (
-            <div className="grid lg:grid-cols-[2fr_1fr] gap-4 items-start">
+            <div className={`grid gap-4 items-start ${showMapPanel ? 'lg:grid-cols-[3fr_2fr]' : 'lg:grid-cols-1'}`}>
               <div className="space-y-6">
                 <div className="flex items-center justify-between flex-wrap gap-3">
                   <div>
@@ -1654,7 +1654,7 @@ const parseLocalDate = (value) => {
               )}
             </div>
 
-            <div className={`${showMapPanel ? 'block' : 'hidden'} lg:block`}>
+            {showMapPanel && (
               <div className="bg-white border rounded-2xl shadow-md p-3 sm:p-4 lg:sticky lg:top-4 space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -1706,7 +1706,7 @@ const parseLocalDate = (value) => {
                   )}
                 </div>
               </div>
-            </div>
+            )}
           </div>
           )}
 
