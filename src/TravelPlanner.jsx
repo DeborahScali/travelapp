@@ -79,9 +79,7 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {} }) => {
   const [currencyPickerPosition, setCurrencyPickerPosition] = useState({ top: 0, left: 0 });
   const [focusedNotesEditor, setFocusedNotesEditor] = useState(null); // Store place ID of focused notes editor
   const [showEmojiPicker, setShowEmojiPicker] = useState(null); // Store place ID for emoji picker
-  // Temporarily hardcode the API key since env vars aren't loading
-  const initialMapsKey = 'AIzaSyBFY-pyT3UnUN5bWc_G82xltZ7bqxInCo0';
-  const [googleMapsApiKey, setGoogleMapsApiKey] = useState(initialMapsKey);
+  const [googleMapsApiKey, setGoogleMapsApiKey] = useState(import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '');
   const [showApiKeyModal, setShowApiKeyModal] = useState(false);
   const [calculatingDistance, setCalculatingDistance] = useState(false);
   const [placeSearchTerm, setPlaceSearchTerm] = useState('');
