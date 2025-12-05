@@ -85,6 +85,8 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {} }) => {
   const [placeSearchTerm, setPlaceSearchTerm] = useState('');
   const [placeSuggestions, setPlaceSuggestions] = useState([]);
   const [placeSearchLoading, setPlaceSearchLoading] = useState(false);
+  const [addingNestedPlace, setAddingNestedPlace] = useState(null); // Store parent place ID when adding nested place
+  const [draggedItem, setDraggedItem] = useState(null); // Store dragged place info
   const [citySearchTerm, setCitySearchTerm] = useState('');
   const [countrySearchTerm, setCountrySearchTerm] = useState('');
   const [showCitySuggestions, setShowCitySuggestions] = useState(false);
@@ -393,17 +395,154 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {} }) => {
     }
   };
 
-  const handleDeletePlace = (dayId, placeId) => {
+  const handleDeletePlace = (dayId, placeId, parentPlaceId = null) => {
+    const updatedPlans = dailyPlans.map(day => {
+      if (day.id === dayId) {
+        if (parentPlaceId) {
+          // Delete nested place
+          return {
+            ...day,
+            places: day.places.map(p => {
+              if (p.id === parentPlaceId) {
+                return {
+                  ...p,
+                  subplaces: (p.subplaces || []).filter(sp => sp.id !== placeId)
+                };
+              }
+              return p;
+            })
+          };
+        } else {
+          // Delete top-level place
+          return {
+            ...day,
+            places: day.places.filter(p => p.id !== placeId)
+          };
+        }
+      }
+      return day;
+    });
+    setDailyPlans(updatedPlans);
+  };
+
+  const handleAddNestedPlace = (dayId, parentPlaceId, nestedPlaceData) => {
     const updatedPlans = dailyPlans.map(day => {
       if (day.id === dayId) {
         return {
           ...day,
-          places: day.places.filter(p => p.id !== placeId)
+          places: day.places.map(p => {
+            if (p.id === parentPlaceId) {
+              return {
+                ...p,
+                subplaces: [...(p.subplaces || []), { id: Date.now(), ...nestedPlaceData }]
+              };
+            }
+            return p;
+          })
         };
       }
       return day;
     });
     setDailyPlans(updatedPlans);
+  };
+
+  const handleDragStart = (e, dayId, placeId, parentPlaceId = null) => {
+    setDraggedItem({ dayId, placeId, parentPlaceId });
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  };
+
+  const handleDrop = (e, dayId, targetPlaceId, targetParentPlaceId = null) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (!draggedItem) return;
+
+    // Don't allow dropping on itself
+    if (draggedItem.placeId === targetPlaceId && draggedItem.parentPlaceId === targetParentPlaceId) {
+      setDraggedItem(null);
+      return;
+    }
+
+    const updatedPlans = dailyPlans.map(day => {
+      if (day.id === dayId) {
+        let places = [...day.places];
+
+        // Handle nested to nested, nested to top-level, top-level to nested, or top-level to top-level
+        if (draggedItem.parentPlaceId && targetParentPlaceId) {
+          // Both are nested - reorder within same parent or move between parents
+          // Find and remove dragged item
+          let draggedPlace = null;
+          places = places.map(p => {
+            if (p.id === draggedItem.parentPlaceId) {
+              const subplaces = p.subplaces || [];
+              draggedPlace = subplaces.find(sp => sp.id === draggedItem.placeId);
+              return {
+                ...p,
+                subplaces: subplaces.filter(sp => sp.id !== draggedItem.placeId)
+              };
+            }
+            return p;
+          });
+
+          // Insert at target position
+          if (draggedPlace) {
+            places = places.map(p => {
+              if (p.id === targetParentPlaceId) {
+                const subplaces = p.subplaces || [];
+                const targetIndex = subplaces.findIndex(sp => sp.id === targetPlaceId);
+                const newSubplaces = [...subplaces];
+                newSubplaces.splice(targetIndex, 0, draggedPlace);
+                return { ...p, subplaces: newSubplaces };
+              }
+              return p;
+            });
+          }
+        } else if (draggedItem.parentPlaceId && !targetParentPlaceId) {
+          // Nested to top-level
+          let draggedPlace = null;
+          places = places.map(p => {
+            if (p.id === draggedItem.parentPlaceId) {
+              const subplaces = p.subplaces || [];
+              draggedPlace = subplaces.find(sp => sp.id === draggedItem.placeId);
+              return {
+                ...p,
+                subplaces: subplaces.filter(sp => sp.id !== draggedItem.placeId)
+              };
+            }
+            return p;
+          });
+
+          if (draggedPlace) {
+            const targetIndex = places.findIndex(p => p.id === targetPlaceId);
+            places.splice(targetIndex, 0, draggedPlace);
+          }
+        } else if (!draggedItem.parentPlaceId && targetParentPlaceId) {
+          // Top-level to nested - not allowed in this implementation
+          setDraggedItem(null);
+          return day;
+        } else {
+          // Both are top-level - reorder
+          const draggedIndex = places.findIndex(p => p.id === draggedItem.placeId);
+          const targetIndex = places.findIndex(p => p.id === targetPlaceId);
+
+          if (draggedIndex !== -1 && targetIndex !== -1) {
+            const [removed] = places.splice(draggedIndex, 1);
+            places.splice(targetIndex, 0, removed);
+          }
+        }
+
+        return { ...day, places };
+      }
+      return day;
+    });
+
+    setDailyPlans(updatedPlans);
+    setDraggedItem(null);
   };
 
   const handleChangeTransportMode = async (dayId, placeId, newMode) => {
@@ -1850,6 +1989,10 @@ const parseLocalDate = (value) => {
 
                         {/* Place Card */}
                         <div
+                          draggable
+                          onDragStart={(e) => handleDragStart(e, selectedDay, place.id)}
+                          onDragOver={handleDragOver}
+                          onDrop={(e) => handleDrop(e, selectedDay, place.id)}
                           onClick={() => {
                             // Trigger the corresponding map marker
                             const markerIndex = selectedDayData.places.findIndex(p => p.id === place.id);
@@ -1861,9 +2004,9 @@ const parseLocalDate = (value) => {
                               }
                             }
                           }}
-                          className={`border rounded-lg overflow-hidden transition-all cursor-pointer ${
+                          className={`border rounded-lg overflow-hidden transition-all cursor-move ${
                             place.visited ? 'bg-gray-50 border-gray-300' : 'hover:shadow-md'
-                          }`}
+                          } ${draggedItem?.placeId === place.id ? 'opacity-50' : ''}`}
                         >
                           {/* Place Header */}
                           <div className="p-3 sm:p-4">
@@ -2278,6 +2421,16 @@ const parseLocalDate = (value) => {
                                   <button
                                     onClick={(e) => {
                                       e.stopPropagation();
+                                      setAddingNestedPlace(addingNestedPlace === place.id ? null : place.id);
+                                    }}
+                                    className="p-2 text-green-600 hover:bg-green-50 rounded-lg"
+                                    title="Add nested place"
+                                  >
+                                    <Plus size={18} />
+                                  </button>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
                                       openInGoogleMaps(place.address);
                                     }}
                                     className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"
@@ -2298,6 +2451,160 @@ const parseLocalDate = (value) => {
                               )}
                             </div>
                           </div>
+
+                          {/* Nested Places Section */}
+                          {addingNestedPlace === place.id && (
+                            <div className="mt-2 ml-8 p-3 border-2 border-dashed border-green-300 rounded-lg bg-green-50">
+                              <div className="flex items-center gap-2 mb-2">
+                                <Plus size={16} className="text-green-600" />
+                                <input
+                                  type="text"
+                                  placeholder="Add nested place (e.g., shop, exhibit, room...)"
+                                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:border-green-500 focus:outline-none text-sm"
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter' && e.target.value.trim()) {
+                                      handleAddNestedPlace(selectedDay, place.id, {
+                                        name: e.target.value.trim(),
+                                        type: 'note',
+                                        notes: '',
+                                        visited: false
+                                      });
+                                      e.target.value = '';
+                                      setAddingNestedPlace(null);
+                                    } else if (e.key === 'Escape') {
+                                      setAddingNestedPlace(null);
+                                    }
+                                  }}
+                                  onClick={(e) => e.stopPropagation()}
+                                  autoFocus
+                                />
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setAddingNestedPlace(null);
+                                  }}
+                                  className="p-1 text-gray-400 hover:text-gray-600"
+                                >
+                                  <X size={16} />
+                                </button>
+                              </div>
+                              <p className="text-xs text-gray-500">Press Enter to add, Esc to cancel</p>
+                            </div>
+                          )}
+
+                          {/* Render Nested Places */}
+                          {place.subplaces && place.subplaces.length > 0 && (
+                            <div className="ml-8 mt-2 space-y-2">
+                              {place.subplaces.map((subplace, subIndex) => (
+                                <div
+                                  key={subplace.id}
+                                  draggable
+                                  onDragStart={(e) => handleDragStart(e, selectedDay, subplace.id, place.id)}
+                                  onDragOver={handleDragOver}
+                                  onDrop={(e) => handleDrop(e, selectedDay, subplace.id, place.id)}
+                                  className={`border border-gray-200 rounded-lg p-3 bg-white hover:shadow-sm transition-all cursor-move ${
+                                    draggedItem?.placeId === subplace.id && draggedItem?.parentPlaceId === place.id ? 'opacity-50' : ''
+                                  }`}
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <div className="flex items-start gap-2">
+                                    {/* Nested indicator */}
+                                    <div className="flex-shrink-0 mt-1">
+                                      <div className="w-6 h-6 rounded bg-purple-100 flex items-center justify-center">
+                                        <span className="text-xs text-purple-600">#{subIndex + 1}</span>
+                                      </div>
+                                    </div>
+
+                                    {/* Nested place content */}
+                                    <div className="flex-1 min-w-0">
+                                      <h5 className="font-semibold text-sm text-gray-800 mb-1">{subplace.name}</h5>
+
+                                      {/* Notes for nested place */}
+                                      <div className="relative">
+                                        {focusedNotesEditor === `${place.id}-${subplace.id}` && (
+                                          <div
+                                            className="flex items-center gap-1 mb-1 p-1 bg-gray-50 border border-gray-200 rounded flex-wrap"
+                                            onMouseDown={(e) => e.preventDefault()}
+                                            onClick={(e) => e.stopPropagation()}
+                                          >
+                                            {/* Bold */}
+                                            <button
+                                              onMouseDown={(e) => {
+                                                e.preventDefault();
+                                                document.execCommand('bold', false, null);
+                                              }}
+                                              className="px-2 py-1 hover:bg-gray-200 rounded text-xs font-bold"
+                                            >
+                                              B
+                                            </button>
+                                            {/* Italic */}
+                                            <button
+                                              onMouseDown={(e) => {
+                                                e.preventDefault();
+                                                document.execCommand('italic', false, null);
+                                              }}
+                                              className="px-2 py-1 hover:bg-gray-200 rounded text-xs italic"
+                                            >
+                                              I
+                                            </button>
+                                          </div>
+                                        )}
+
+                                        <div
+                                          contentEditable
+                                          suppressContentEditableWarning
+                                          onFocus={(e) => {
+                                            e.stopPropagation();
+                                            setFocusedNotesEditor(`${place.id}-${subplace.id}`);
+                                          }}
+                                          onBlur={(e) => {
+                                            setTimeout(() => {
+                                              setFocusedNotesEditor(null);
+                                            }, 200);
+
+                                            const updatedPlans = dailyPlans.map(d => ({
+                                              ...d,
+                                              places: d.places.map(p => {
+                                                if (p.id === place.id && d.id === selectedDay) {
+                                                  return {
+                                                    ...p,
+                                                    subplaces: (p.subplaces || []).map(sp =>
+                                                      sp.id === subplace.id
+                                                        ? { ...sp, notes: e.currentTarget.innerHTML }
+                                                        : sp
+                                                    )
+                                                  };
+                                                }
+                                                return p;
+                                              })
+                                            }));
+                                            setDailyPlans(updatedPlans);
+                                          }}
+                                          onClick={(e) => e.stopPropagation()}
+                                          onKeyDown={(e) => e.stopPropagation()}
+                                          dangerouslySetInnerHTML={{ __html: subplace.notes || '' }}
+                                          data-placeholder="Add notes..."
+                                          className="text-gray-600 text-xs px-2 py-1 border border-transparent hover:border-gray-300 focus:border-green-500 rounded outline-none min-h-[20px] max-h-[100px] overflow-y-auto transition-all empty:before:content-[attr(data-placeholder)] empty:before:text-gray-400"
+                                        />
+                                      </div>
+                                    </div>
+
+                                    {/* Delete nested place button */}
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleDeletePlace(selectedDay, subplace.id, place.id);
+                                      }}
+                                      className="p-1 text-red-500 hover:bg-red-50 rounded flex-shrink-0"
+                                      title="Delete nested place"
+                                    >
+                                      <Trash2 size={14} />
+                                    </button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       </React.Fragment>
                     ))}
