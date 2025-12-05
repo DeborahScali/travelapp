@@ -77,6 +77,8 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {} }) => {
   const [selectedAddType, setSelectedAddType] = useState(null);
   const [showCurrencyPicker, setShowCurrencyPicker] = useState(null); // Store place ID
   const [currencyPickerPosition, setCurrencyPickerPosition] = useState({ top: 0, left: 0 });
+  const [focusedNotesEditor, setFocusedNotesEditor] = useState(null); // Store place ID of focused notes editor
+  const [showEmojiPicker, setShowEmojiPicker] = useState(null); // Store place ID for emoji picker
   // Temporarily hardcode the API key since env vars aren't loading
   const initialMapsKey = 'AIzaSyBFY-pyT3UnUN5bWc_G82xltZ7bqxInCo0';
   const [googleMapsApiKey, setGoogleMapsApiKey] = useState(initialMapsKey);
@@ -1880,7 +1882,7 @@ const parseLocalDate = (value) => {
 
                               {/* Place Info */}
                               <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 mb-1 flex-wrap">
+                                <div className="flex items-center gap-2 mb-2 flex-wrap">
                                   <span className="bg-gradient-to-r from-[#FF6B6B]/10 to-[#FFE66D]/10 text-[#FF6B6B] px-2 py-1 rounded-full text-xs sm:text-sm font-medium">
                                     #{index + 1}
                                   </span>
@@ -1888,7 +1890,157 @@ const parseLocalDate = (value) => {
                                     {place.name}
                                   </h4>
                                 </div>
-                                <p className="text-[#A1A1A1] text-sm mb-2">{place.address}</p>
+
+                                {/* Rich Text Notes Input */}
+                                <div className="relative">
+                                  {/* Formatting Toolbar */}
+                                  {focusedNotesEditor === place.id && (
+                                    <div
+                                      className="flex items-center gap-1 mb-1 p-1 bg-gray-50 border border-gray-200 rounded flex-wrap"
+                                      onMouseDown={(e) => e.preventDefault()}
+                                      onClick={(e) => e.stopPropagation()}
+                                    >
+                                      {/* Bold */}
+                                      <button
+                                        onMouseDown={(e) => {
+                                          e.preventDefault();
+                                          document.execCommand('bold', false, null);
+                                        }}
+                                        className="px-2 py-1 hover:bg-gray-200 rounded text-xs font-bold"
+                                        title="Bold"
+                                      >
+                                        B
+                                      </button>
+
+                                      {/* Italic */}
+                                      <button
+                                        onMouseDown={(e) => {
+                                          e.preventDefault();
+                                          document.execCommand('italic', false, null);
+                                        }}
+                                        className="px-2 py-1 hover:bg-gray-200 rounded text-xs italic"
+                                        title="Italic"
+                                      >
+                                        I
+                                      </button>
+
+                                      <span className="text-gray-300">|</span>
+
+                                      {/* Font Family */}
+                                      <select
+                                        onMouseDown={(e) => e.preventDefault()}
+                                        onChange={(e) => {
+                                          document.execCommand('fontName', false, e.target.value);
+                                          e.target.value = '';
+                                        }}
+                                        className="px-1 py-1 text-xs border border-gray-300 rounded hover:bg-gray-200"
+                                        title="Font"
+                                      >
+                                        <option value="">Font</option>
+                                        <option value="Arial">Arial</option>
+                                        <option value="Courier New">Courier</option>
+                                        <option value="Georgia">Georgia</option>
+                                        <option value="Times New Roman">Times</option>
+                                        <option value="Verdana">Verdana</option>
+                                        <option value="Comic Sans MS">Comic Sans</option>
+                                      </select>
+
+                                      {/* Font Color */}
+                                      <input
+                                        type="color"
+                                        onMouseDown={(e) => e.preventDefault()}
+                                        onChange={(e) => {
+                                          document.execCommand('foreColor', false, e.target.value);
+                                        }}
+                                        className="w-6 h-6 border border-gray-300 rounded cursor-pointer"
+                                        title="Text Color"
+                                      />
+
+                                      {/* Background Color */}
+                                      <input
+                                        type="color"
+                                        onMouseDown={(e) => e.preventDefault()}
+                                        onChange={(e) => {
+                                          document.execCommand('backColor', false, e.target.value);
+                                        }}
+                                        className="w-6 h-6 border border-gray-300 rounded cursor-pointer"
+                                        title="Background Color"
+                                      />
+
+                                      <span className="text-gray-300">|</span>
+
+                                      {/* Emoji Picker Button */}
+                                      <button
+                                        onMouseDown={(e) => e.preventDefault()}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setShowEmojiPicker(showEmojiPicker === place.id ? null : place.id);
+                                        }}
+                                        className="px-2 py-1 hover:bg-gray-200 rounded text-xs"
+                                        title="Add Emoji"
+                                      >
+                                        😀
+                                      </button>
+
+                                      {/* Emoji Picker Dropdown */}
+                                      {showEmojiPicker === place.id && (
+                                        <div
+                                          className="absolute top-full left-0 mt-1 bg-white border border-gray-300 rounded shadow-lg p-2 z-10 flex flex-wrap gap-1 max-w-[200px]"
+                                          onMouseDown={(e) => e.preventDefault()}
+                                        >
+                                          {['😀', '😃', '😄', '😁', '😅', '😂', '🤣', '😊', '😇', '🙂', '🙃', '😉', '😌', '😍', '🥰', '😘', '😗', '😙', '😚', '😋', '😛', '😝', '😜', '🤪', '🤨', '🧐', '🤓', '😎', '🥳', '😏', '😒', '😞', '😔', '😟', '😕', '🙁', '☹️', '😣', '😖', '😫', '😩', '🥺', '😢', '😭', '😤', '😠', '😡', '🤬', '🤯', '😳', '🥵', '🥶', '😱', '😨', '😰', '😥', '😓', '🤗', '🤔', '🤭', '🤫', '🤥', '😶', '😐', '😑', '😬', '🙄', '😯', '😦', '😧', '😮', '😲', '🥱', '😴', '🤤', '😪', '😵', '🤐', '🥴', '🤢', '🤮', '🤧', '😷', '🤒', '🤕', '🤑', '🤠', '❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍', '🤎', '💔', '❣️', '💕', '💞', '💓', '💗', '💖', '💘', '💝', '⭐', '✨', '🌟', '💫', '⚡', '🔥', '💥', '👍', '👎', '👌', '✌️', '🤞', '🤟', '🤘', '🤙', '👈', '👉', '👆', '👇', '☝️', '✋', '🤚', '🖐️', '🖖', '👋', '🤝', '💪', '🦾', '🙏', '✍️', '💅', '🦵', '🦿', '🦶'].map(emoji => (
+                                            <button
+                                              key={emoji}
+                                              onMouseDown={(e) => {
+                                                e.preventDefault();
+                                                document.execCommand('insertText', false, emoji);
+                                                setShowEmojiPicker(null);
+                                              }}
+                                              className="text-lg hover:bg-gray-100 rounded p-1"
+                                            >
+                                              {emoji}
+                                            </button>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+
+                                  <div
+                                    contentEditable
+                                    suppressContentEditableWarning
+                                    onFocus={(e) => {
+                                      e.stopPropagation();
+                                      setFocusedNotesEditor(place.id);
+                                    }}
+                                    onBlur={(e) => {
+                                      // Delay to allow toolbar clicks to register
+                                      setTimeout(() => {
+                                        setFocusedNotesEditor(null);
+                                        setShowEmojiPicker(null);
+                                      }, 200);
+
+                                      const updatedPlans = dailyPlans.map(d => ({
+                                        ...d,
+                                        places: d.places.map(p =>
+                                          p.id === place.id && d.id === selectedDay
+                                            ? { ...p, notes: e.currentTarget.innerHTML }
+                                            : p
+                                        )
+                                      }));
+                                      setDailyPlans(updatedPlans);
+                                    }}
+                                    onClick={(e) => e.stopPropagation()}
+                                    onKeyDown={(e) => e.stopPropagation()}
+                                    dangerouslySetInnerHTML={{ __html: place.notes || '' }}
+                                    data-placeholder="Add notes, links and so on..."
+                                    className="text-gray-600 text-sm mb-2 px-2 py-1 border border-transparent hover:border-gray-300 focus:border-[#4ECDC4] rounded outline-none min-h-[24px] max-h-[200px] overflow-y-auto transition-all empty:before:content-[attr(data-placeholder)] empty:before:text-gray-400"
+                                    style={{
+                                      wordWrap: 'break-word',
+                                      whiteSpace: 'pre-wrap'
+                                    }}
+                                  />
+                                </div>
 
                                 {/* Compact Metadata Inputs */}
                                 <div className="flex items-center gap-2 text-xs flex-wrap">
@@ -2120,11 +2272,6 @@ const parseLocalDate = (value) => {
                                     )}
                                   </div>
                                 </div>
-
-                                {/* Notes */}
-                                {place.notes && (
-                                  <p className="text-[#A1A1A1] text-sm italic mt-2">{place.notes}</p>
-                                )}
                               </div>
 
                               {/* Action Buttons */}
@@ -2259,15 +2406,49 @@ const parseLocalDate = (value) => {
                     ) : (
                       /* Step 2: Show search bar with type indicator */
                       <div className="border-2 border-dashed border-gray-300 rounded-xl p-4 bg-gray-50">
-                        <div className="flex items-center justify-between mb-3">
-                          <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-3">
+                          {/* Icon */}
+                          <div className="flex-shrink-0">
                             {selectedAddType === 'place' && <div className="w-8 h-8 rounded-lg bg-blue-500 flex items-center justify-center"><Building size={16} className="text-white" /></div>}
                             {selectedAddType === 'restaurant' && <div className="w-8 h-8 rounded-lg bg-orange-500 flex items-center justify-center"><FaUtensils size={14} className="text-white" /></div>}
                             {selectedAddType === 'cafe' && <div className="w-8 h-8 rounded-lg bg-amber-600 flex items-center justify-center"><Coffee size={16} className="text-white" /></div>}
                             {selectedAddType === 'activity' && <div className="w-8 h-8 rounded-lg bg-green-500 flex items-center justify-center"><Camera size={16} className="text-white" /></div>}
                             {selectedAddType === 'note' && <div className="w-8 h-8 rounded-lg bg-purple-500 flex items-center justify-center"><StickyNote size={16} className="text-white" /></div>}
-                            <h3 className="text-lg font-semibold capitalize">Add {selectedAddType}</h3>
                           </div>
+
+                          {/* Search bar */}
+                          <div className="relative flex-1">
+                            <input
+                              type="text"
+                              placeholder="Search for a place..."
+                              value={placeSearchTerm || placeForm.name}
+                              onChange={(e) => {
+                                setPlaceSearchTerm(e.target.value);
+                                setPlaceForm({ ...placeForm, name: e.target.value });
+                                fetchPlaceSuggestions(e.target.value);
+                              }}
+                              className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-[#4ECDC4] focus:outline-none bg-white"
+                            />
+                            {mapsApiKey && placeSuggestions.length > 0 && (
+                              <div className="absolute z-10 w-full mt-1 bg-white border-2 border-gray-200 rounded-lg shadow-lg divide-y max-h-60 overflow-y-auto">
+                                {placeSuggestions.map((s) => (
+                                  <button
+                                    key={s.place_id}
+                                    onClick={() => handlePlaceSuggestionSelect(s)}
+                                    className="w-full text-left px-4 py-3 hover:bg-gray-50 transition-colors"
+                                  >
+                                    <div className="font-medium text-sm">{s.structured_formatting?.main_text || s.description}</div>
+                                    <div className="text-xs text-gray-500">{s.structured_formatting?.secondary_text || 'Google Places'}</div>
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                            {placeSearchLoading && (
+                              <div className="absolute right-3 top-3 text-sm text-gray-400">Searching...</div>
+                            )}
+                          </div>
+
+                          {/* Close button */}
                           <button
                             onClick={() => {
                               setSelectedAddType(null);
@@ -2284,44 +2465,11 @@ const parseLocalDate = (value) => {
                               setPlaceSearchTerm('');
                               setPlaceSuggestions([]);
                             }}
-                            className="text-gray-400 hover:text-gray-600"
+                            className="text-gray-400 hover:text-gray-600 flex-shrink-0"
                           >
                             <X size={20} />
                           </button>
                         </div>
-
-                        {/* Search bar */}
-                        <div className="relative">
-                          <input
-                            type="text"
-                            placeholder="Search for a place..."
-                            value={placeSearchTerm || placeForm.name}
-                        onChange={(e) => {
-                          setPlaceSearchTerm(e.target.value);
-                          setPlaceForm({ ...placeForm, name: e.target.value });
-                          fetchPlaceSuggestions(e.target.value);
-                        }}
-                        className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-[#4ECDC4] focus:outline-none bg-white"
-                      />
-                      {mapsApiKey && placeSuggestions.length > 0 && (
-                        <div className="absolute z-10 w-full mt-1 bg-white border-2 border-gray-200 rounded-lg shadow-lg divide-y max-h-60 overflow-y-auto">
-                          {placeSuggestions.map((s) => (
-                            <button
-                              key={s.place_id}
-                              onClick={() => handlePlaceSuggestionSelect(s)}
-                              className="w-full text-left px-4 py-3 hover:bg-gray-50 transition-colors"
-                            >
-                              <div className="font-medium text-sm">{s.structured_formatting?.main_text || s.description}</div>
-                              <div className="text-xs text-gray-500">{s.structured_formatting?.secondary_text || 'Google Places'}</div>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                      {placeSearchLoading && (
-                        <div className="absolute right-3 top-3 text-sm text-gray-400">Searching...</div>
-                      )}
-                    </div>
-
                       </div>
                     )}
                   </div>
