@@ -2353,15 +2353,15 @@ const parseLocalDate = (value) => {
                               e.stopPropagation();
                               setInsertingAtIndex(insertingAtIndex === index + 1 ? null : index + 1);
                             }}
-                            className="ml-12 text-gray-400 hover:text-blue-500 transition-all"
+                            className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#4ECDC4]/5 hover:bg-[#4ECDC4]/10 border border-[#4ECDC4]/20 hover:border-[#4ECDC4]/40 transition-all cursor-pointer text-xs"
                             title="Add place here"
                           >
-                            <IoAddCircleOutline size={24} />
+                            <IoAddCircleOutline size={16} className="text-[#4ECDC4]" />
                           </button>
 
                           {/* Dropdown Menu for Insert */}
                           {insertingAtIndex === index + 1 && !selectedAddType && (
-                            <div className="ml-12 mt-1 absolute z-20 w-64 bg-white rounded-xl shadow-xl border-2 border-gray-200 overflow-hidden">
+                            <div className="mt-1 absolute z-20 w-64 bg-white rounded-xl shadow-xl border-2 border-gray-200 overflow-hidden">
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -2446,7 +2446,7 @@ const parseLocalDate = (value) => {
 
                           {/* Search Form for Insert */}
                           {insertingAtIndex === index + 1 && selectedAddType && (
-                            <div className="ml-12 mt-1 p-3 border-2 border-dashed border-blue-300 rounded-lg bg-blue-50">
+                            <div className="mt-1 p-3 border-2 border-dashed border-blue-300 rounded-lg bg-blue-50">
                               <div className="flex items-center gap-2">
                                 {/* Type Icon */}
                                 <div className="flex-shrink-0">
