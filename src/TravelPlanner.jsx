@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { DateRange } from 'react-date-range';
 import 'react-date-range/dist/styles.css';
 import 'react-date-range/dist/theme/default.css';
-import { Plus, Trash2, MapPin, Plane, DollarSign, TrendingUp, Calendar, Navigation, Train, Map as MapIcon, LogOut, User, ArrowLeft, X, Car, Bus, ChevronDown } from 'lucide-react';
+import { Plus, Trash2, MapPin, Plane, DollarSign, TrendingUp, Calendar, Navigation, Train, Map as MapIcon, LogOut, User, ArrowLeft, X, Car, ChevronDown } from 'lucide-react';
 import { useAuth } from './contexts/AuthContext';
 import { useTrips, useCurrentTrip, useFlights, useDailyPlans, useExpenses } from './hooks/useFirestore';
 
@@ -106,7 +106,25 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {} }) => {
     endDate: ''
   });
   const mapsApiKey = (googleMapsApiKey || (import.meta?.env?.VITE_GOOGLE_MAPS_API_KEY || '')).trim();
-  const selectedDayData = dailyPlans.find(d => d.id === selectedDay);
+
+  // Memoize selectedDayData to prevent unnecessary map re-renders
+  const selectedDayData = useMemo(() => {
+    return dailyPlans.find(d => d.id === selectedDay);
+  }, [dailyPlans, selectedDay]);
+
+  // Create a stable reference for map dependencies
+  const mapDependencyKey = useMemo(() => {
+    if (!selectedDayData?.places) return '';
+    return JSON.stringify(
+      selectedDayData.places.map(p => ({
+        id: p.id,
+        address: p.address,
+        // Ensure consistent property order for location
+        location: p.location ? { lat: p.location.lat, lng: p.location.lng } : null,
+        transportMode: p.transportMode
+      }))
+    );
+  }, [selectedDayData]);
 
   // If an initialTrip was provided (created just now) and the
   // useCurrentTrip hook hasn't reflected it yet, save it so that
@@ -293,7 +311,8 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {} }) => {
         finalPlaceForm = {
           ...placeForm,
           distance: result.distance,
-          transportTime: result.time
+          transportTime: result.time,
+          isAutoCalculated: result.isAutoCalculated || false
         };
       }
     }
@@ -373,24 +392,17 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {} }) => {
     const place = day.places[placeIndex];
     const previousPlace = day.places[placeIndex - 1];
 
-    // Recalculate distance and time with new mode
-    let distanceData = { distance: '', time: '' };
-    if (mapsApiKey && previousPlace.address && place.address) {
-      distanceData = await calculateDistanceAndTime(
-        previousPlace.address,
-        place.address,
-        newMode
-      );
-    }
+    // Close dropdown immediately for better UX
+    setChangingTransportMode(null);
 
-    // Update the place with new transport mode and recalculated distance/time
-    const updatedPlans = dailyPlans.map(d => {
+    // Update transport mode and clear old distance/time data
+    let updatedPlans = dailyPlans.map(d => {
       if (d.id === dayId) {
         return {
           ...d,
           places: d.places.map(p =>
             p.id === placeId
-              ? { ...p, transportMode: newMode, distance: distanceData.distance, transportTime: distanceData.time }
+              ? { ...p, transportMode: newMode, distance: '', transportTime: '', isAutoCalculated: false }
               : p
           )
         };
@@ -398,8 +410,65 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {} }) => {
       return d;
     });
 
+    // Try to calculate distance and time with new mode
+    let distanceData = { distance: '', time: '', error: null };
+    if (mapsApiKey && previousPlace.address && place.address) {
+
+      // Plane mode is always manual - no Google calculation
+      if (newMode === 'plane') {
+        // Leave empty for manual entry
+        distanceData = { distance: '', time: '', error: null, isAutoCalculated: false };
+      }
+      // For transit (and legacy bus), try TRANSIT first, then fallback to DRIVING
+      else if (newMode === 'transit' || newMode === 'bus') {
+        // Try TRANSIT first
+        distanceData = await calculateDistanceAndTime(
+          previousPlace.address,
+          place.address,
+          'transit' // Uses TRANSIT mode
+        );
+
+        // If TRANSIT failed, try DRIVING as fallback
+        if (distanceData.error || (!distanceData.distance && !distanceData.time)) {
+          distanceData = await calculateDistanceAndTime(
+            previousPlace.address,
+            place.address,
+            'car' // Uses DRIVING mode
+          );
+        }
+      } else {
+        distanceData = await calculateDistanceAndTime(
+          previousPlace.address,
+          place.address,
+          newMode
+        );
+      }
+    }
+
+    // Update with calculated data (or leave empty for manual modes if calculation failed)
+    if (distanceData.distance || distanceData.time) {
+      updatedPlans = updatedPlans.map(d => {
+        if (d.id === dayId) {
+          return {
+            ...d,
+            places: d.places.map(p =>
+              p.id === placeId
+                ? {
+                    ...p,
+                    distance: distanceData.distance,
+                    transportTime: distanceData.time,
+                    isAutoCalculated: distanceData.isAutoCalculated || false
+                  }
+                : p
+            )
+          };
+        }
+        return d;
+      });
+    }
+
+    // Only call setDailyPlans ONCE at the very end
     setDailyPlans(updatedPlans);
-    setChangingTransportMode(null); // Close the dropdown
   };
 
   const handleDeleteFlight = async (flightId) => {
@@ -454,14 +523,18 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {} }) => {
 
       // Map our transport modes to Google Maps travel modes
       const travelModeMap = {
-        walking: 'walking',
-        metro: 'transit',
-        bus: 'transit',
-        train: 'transit',
-        car: 'driving',
-        other: 'driving'
+        walking: 'WALKING',
+        transit: 'TRANSIT',
+        car: 'DRIVING',
+        plane: 'DRIVING', // Plane uses DRIVING as fallback but is handled separately
+        // Legacy support for old data
+        metro: 'TRANSIT',
+        bus: 'TRANSIT',
+        train: 'TRANSIT',
+        other: 'DRIVING'
       };
-      const travelMode = travelModeMap[mode] || 'walking';
+      const travelMode = travelModeMap[mode] || 'WALKING';
+      console.log('Travel mode mapping:', mode, '->', travelMode);
 
       const matrixResult = await new Promise((resolve, reject) => {
         if (!window.google?.maps) {
@@ -475,14 +548,14 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {} }) => {
           {
             origins: [normalizedOrigin],
             destinations: [normalizedDestination],
-            travelMode: travelMode.toUpperCase(),
+            travelMode: travelMode,
           },
           (response, status) => {
             if (status === 'OK' && response.rows[0].elements[0].status === 'OK') {
               const element = response.rows[0].elements[0];
               const distanceKm = (element.distance.value / 1000).toFixed(1);
               const timeMin = Math.round(element.duration.value / 60);
-              resolve({ distance: distanceKm, time: timeMin, error: null });
+              resolve({ distance: distanceKm, time: timeMin, error: null, isAutoCalculated: true });
             } else {
               reject(new Error('Could not calculate route'));
             }
@@ -504,10 +577,13 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {} }) => {
   const mapInstanceRef = useRef(null);
   const markersRef = useRef([]);
   const directionsRenderersRef = useRef([]);
+  const lastSavedDailyPlansRef = useRef(null); // Track last saved state to prevent loops
+  const isSavingRef = useRef(false); // Track if we're currently saving
   const [showMapPanel, setShowMapPanel] = useState(true);
   const [mapLoading, setMapLoading] = useState(false);
   const [mapPlaceholderDismissed, setMapPlaceholderDismissed] = useState(false);
   const [changingTransportMode, setChangingTransportMode] = useState(null); // {dayId, placeId}
+  const [editingManualDistance, setEditingManualDistance] = useState(null); // {dayId, placeId, distance, time}
 
   const waitForGoogleMaps = () => {
     if (mapsReady && window.google?.maps) {
@@ -696,10 +772,13 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {} }) => {
           const place = selectedDayData.places[i + 1];
           const travelModeMap = {
             walking: 'WALKING',
+            transit: 'TRANSIT',
+            car: 'DRIVING',
+            plane: 'DRIVING', // Plane uses DRIVING as fallback but is handled separately
+            // Legacy support for old data
             metro: 'TRANSIT',
             bus: 'TRANSIT',
             train: 'TRANSIT',
-            car: 'DRIVING',
             other: 'DRIVING'
           };
           const travelMode = travelModeMap[place.transportMode] || 'WALKING';
@@ -735,7 +814,8 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {} }) => {
     }).catch(() => setMapLoading(false));
 
     return () => { cancelled = true; };
-  }, [showMapPanel, mapsReady, selectedDayData]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showMapPanel, mapsReady, mapDependencyKey]);
 
   // Close transport mode dropdown when clicking outside
   useEffect(() => {
@@ -749,12 +829,32 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {} }) => {
     return () => document.removeEventListener('click', handleClickOutside);
   }, [changingTransportMode]);
 
-  // Auto-save to Firestore whenever data changes
+  // Auto-save to Firestore whenever data changes (with debouncing)
   useEffect(() => {
     if (dailyPlans.length > 0 && currentUser && !plansLoading) {
-      saveDailyPlans(dailyPlans).catch(err => console.error('Failed to save daily plans:', err));
+      // Check if dailyPlans actually changed from what we last saved
+      const currentState = JSON.stringify(dailyPlans);
+      if (lastSavedDailyPlansRef.current === currentState) {
+        return;
+      }
+
+      const timer = setTimeout(async () => {
+        isSavingRef.current = true;
+        lastSavedDailyPlansRef.current = currentState; // Store what we're saving
+        try {
+          await saveDailyPlans(dailyPlans);
+        } catch (err) {
+          console.error('Failed to save daily plans:', err);
+        } finally {
+          // Wait a bit before allowing updates again to prevent race conditions
+          setTimeout(() => {
+            isSavingRef.current = false;
+          }, 100);
+        }
+      }, 3000); // Increased debounce to 3 seconds to dramatically reduce saves
+      return () => clearTimeout(timer);
     }
-  }, [dailyPlans]);
+  }, [dailyPlans, currentUser, plansLoading]);
 
   useEffect(() => {
     if (flights.length >= 0 && currentUser && !flightsLoading) {
@@ -1459,64 +1559,150 @@ const parseLocalDate = (value) => {
                                           : { dayId: selectedDay, placeId: place.id }
                                       );
                                     }}
-                                    className="flex items-center gap-2 bg-white px-2 py-1 rounded-md shadow-sm hover:shadow-md hover:bg-gray-50 transition-all cursor-pointer"
+                                    className="flex items-center gap-2 bg-white px-2 py-1 rounded-md shadow-sm hover:shadow-md hover:bg-gray-50 transition-all cursor-pointer min-w-[100px] justify-center"
                                   >
                                     {place.transportMode === 'walking' && <Navigation size={18} className="text-[#4ECDC4]" />}
                                     {place.transportMode === 'car' && <Car size={18} className="text-[#4ECDC4]" />}
-                                    {place.transportMode === 'bus' && <Bus size={18} className="text-[#4ECDC4]" />}
-                                    {place.transportMode === 'metro' && <Train size={18} className="text-[#4ECDC4]" />}
-                                    {place.transportMode === 'train' && <Train size={18} className="text-[#4ECDC4]" />}
-                                    {place.transportMode === 'other' && <MapPin size={18} className="text-[#4ECDC4]" />}
-                                    <span className="font-semibold capitalize text-gray-700">{place.transportMode}</span>
+                                    {place.transportMode === 'transit' && <Train size={18} className="text-[#4ECDC4]" />}
+                                    {place.transportMode === 'plane' && <Plane size={18} className="text-[#4ECDC4]" />}
+                                    {/* Legacy support for old data */}
+                                    {(place.transportMode === 'bus' || place.transportMode === 'metro' || place.transportMode === 'train') && <Train size={18} className="text-[#4ECDC4]" />}
+                                    <span className="font-semibold text-gray-700">
+                                      {place.transportMode === 'transit' ? 'Public Transit' :
+                                       place.transportMode === 'bus' || place.transportMode === 'metro' || place.transportMode === 'train' ? 'Public Transit' :
+                                       place.transportMode.charAt(0).toUpperCase() + place.transportMode.slice(1)}
+                                    </span>
                                     <ChevronDown size={14} className="text-gray-400" />
                                   </button>
 
                                   {/* Dropdown Menu */}
                                   {changingTransportMode?.dayId === selectedDay && changingTransportMode?.placeId === place.id && (
-                                    <div className="absolute top-full left-0 mt-1 bg-white rounded-lg shadow-lg border border-gray-200 z-10 min-w-[140px]">
-                                      {['walking', 'car', 'metro'].map(mode => (
+                                    <div className="absolute top-full left-0 mt-1 bg-white rounded-lg shadow-xl border border-gray-200 z-50 min-w-[140px]">
+                                      {['walking', 'car', 'transit', 'plane'].map((mode, idx, arr) => (
                                         <button
                                           key={mode}
+                                          type="button"
                                           onClick={(e) => {
+                                            e.preventDefault();
                                             e.stopPropagation();
                                             handleChangeTransportMode(selectedDay, place.id, mode);
                                           }}
                                           className={`w-full flex items-center gap-2 px-3 py-2 hover:bg-gray-50 transition-colors ${
                                             place.transportMode === mode ? 'bg-[#4ECDC4]/10' : ''
-                                          } ${mode === 'walking' ? 'rounded-t-lg' : ''} ${mode === 'metro' ? 'rounded-b-lg' : ''}`}
+                                          } ${idx === 0 ? 'rounded-t-lg' : ''} ${idx === arr.length - 1 ? 'rounded-b-lg' : ''}`}
                                         >
                                           {mode === 'walking' && <Navigation size={16} className="text-[#4ECDC4]" />}
                                           {mode === 'car' && <Car size={16} className="text-[#4ECDC4]" />}
-                                          {mode === 'metro' && <Train size={16} className="text-[#4ECDC4]" />}
-                                          <span className="capitalize text-sm font-medium text-gray-700">{mode}</span>
+                                          {mode === 'transit' && <Train size={16} className="text-[#4ECDC4]" />}
+                                          {mode === 'plane' && <Plane size={16} className="text-[#4ECDC4]" />}
+                                          <span className="text-sm font-medium text-gray-700">{mode === 'transit' ? 'Public Transit' : mode.charAt(0).toUpperCase() + mode.slice(1)}</span>
                                         </button>
                                       ))}
                                     </div>
                                   )}
                                 </div>
 
-                                {/* Distance */}
-                                {place.distance && (
-                                  <div className="flex items-center gap-1 bg-white px-2 py-1 rounded-md shadow-sm">
-                                    <span className="font-bold text-[#4ECDC4]">{place.distance}</span>
+                                {/* Distance - Editable only if NOT auto-calculated */}
+                                {(place.distance || ['transit', 'plane', 'metro', 'bus', 'train'].includes(place.transportMode)) && (
+                                  <div className={`flex items-center gap-1 px-2 py-1 rounded-md shadow-sm min-w-[70px] justify-center ${
+                                    place.isAutoCalculated
+                                      ? 'bg-white'
+                                      : 'bg-gray-100 border border-gray-300'
+                                  }`}>
+                                    {!place.isAutoCalculated && editingManualDistance?.dayId === selectedDay && editingManualDistance?.placeId === place.id && editingManualDistance?.field === 'distance' ? (
+                                      <input
+                                        type="number"
+                                        step="0.1"
+                                        value={editingManualDistance.value}
+                                        onChange={(e) => setEditingManualDistance({ ...editingManualDistance, value: e.target.value })}
+                                        onBlur={() => {
+                                          const updatedPlans = dailyPlans.map(d => ({
+                                            ...d,
+                                            places: d.places.map(p =>
+                                              p.id === place.id && d.id === selectedDay
+                                                ? { ...p, distance: editingManualDistance.value, isAutoCalculated: false }
+                                                : p
+                                            )
+                                          }));
+                                          setDailyPlans(updatedPlans);
+                                          setEditingManualDistance(null);
+                                        }}
+                                        onKeyDown={(e) => {
+                                          if (e.key === 'Enter') e.target.blur();
+                                          if (e.key === 'Escape') setEditingManualDistance(null);
+                                        }}
+                                        onClick={(e) => e.stopPropagation()}
+                                        autoFocus
+                                        className="w-12 px-1 font-bold text-gray-600 bg-transparent border-none outline-none"
+                                      />
+                                    ) : (
+                                      <span
+                                        onClick={(e) => {
+                                          if (!place.isAutoCalculated) {
+                                            e.stopPropagation();
+                                            setEditingManualDistance({ dayId: selectedDay, placeId: place.id, field: 'distance', value: place.distance || '' });
+                                          }
+                                        }}
+                                        className={`font-bold ${
+                                          place.isAutoCalculated ? 'text-[#4ECDC4]' : 'text-gray-600 cursor-pointer'
+                                        }`}
+                                      >
+                                        {place.distance || '--'}
+                                      </span>
+                                    )}
                                     <span className="text-gray-600 text-xs">km</span>
                                   </div>
                                 )}
 
-                                {/* Time */}
-                                {place.transportTime && (
-                                  <div className="flex items-center gap-1 bg-white px-2 py-1 rounded-md shadow-sm">
-                                    <span className="font-bold text-[#4ECDC4]">{place.transportTime}</span>
+                                {/* Time - Editable only if NOT auto-calculated */}
+                                {(place.transportTime || ['transit', 'plane', 'metro', 'bus', 'train'].includes(place.transportMode)) && (
+                                  <div className={`flex items-center gap-1 px-2 py-1 rounded-md shadow-sm min-w-[70px] justify-center ${
+                                    place.isAutoCalculated
+                                      ? 'bg-white'
+                                      : 'bg-gray-100 border border-gray-300'
+                                  }`}>
+                                    {!place.isAutoCalculated && editingManualDistance?.dayId === selectedDay && editingManualDistance?.placeId === place.id && editingManualDistance?.field === 'time' ? (
+                                      <input
+                                        type="number"
+                                        value={editingManualDistance.value}
+                                        onChange={(e) => setEditingManualDistance({ ...editingManualDistance, value: e.target.value })}
+                                        onBlur={() => {
+                                          const updatedPlans = dailyPlans.map(d => ({
+                                            ...d,
+                                            places: d.places.map(p =>
+                                              p.id === place.id && d.id === selectedDay
+                                                ? { ...p, transportTime: editingManualDistance.value, isAutoCalculated: false }
+                                                : p
+                                            )
+                                          }));
+                                          setDailyPlans(updatedPlans);
+                                          setEditingManualDistance(null);
+                                        }}
+                                        onKeyDown={(e) => {
+                                          if (e.key === 'Enter') e.target.blur();
+                                          if (e.key === 'Escape') setEditingManualDistance(null);
+                                        }}
+                                        onClick={(e) => e.stopPropagation()}
+                                        autoFocus
+                                        className="w-12 px-1 font-bold text-gray-600 bg-transparent border-none outline-none"
+                                      />
+                                    ) : (
+                                      <span
+                                        onClick={(e) => {
+                                          if (!place.isAutoCalculated) {
+                                            e.stopPropagation();
+                                            setEditingManualDistance({ dayId: selectedDay, placeId: place.id, field: 'time', value: place.transportTime || '' });
+                                          }
+                                        }}
+                                        className={`font-bold ${
+                                          place.isAutoCalculated ? 'text-[#4ECDC4]' : 'text-gray-600 cursor-pointer'
+                                        }`}
+                                      >
+                                        {place.transportTime || '--'}
+                                      </span>
+                                    )}
                                     <span className="text-gray-600 text-xs">min</span>
                                   </div>
-                                )}
-
-                                {/* Metro Details */}
-                                {place.transportMode === 'metro' && place.metroStation && (
-                                  <span className="text-gray-700 flex-1 min-w-0 truncate">
-                                    {place.metroStation}
-                                    {place.metroLine && ` (${place.metroLine})`}
-                                  </span>
                                 )}
 
                                 {/* Get Directions Button */}
@@ -1762,6 +1948,7 @@ const parseLocalDate = (value) => {
                   </div>
                 </div>
               )}
+
             </div>
 
             {showMapPanel && (

@@ -255,7 +255,7 @@ export const useDailyPlans = () => {
           updatedAt: serverTimestamp()
         }
       );
-      await loadDailyPlans();
+      // Don't reload - local state is already updated
     } catch (err) {
       console.error('Error saving daily plan:', err);
       throw err;
@@ -274,7 +274,7 @@ export const useDailyPlans = () => {
         )
       );
       await Promise.all(promises);
-      await loadDailyPlans();
+      // Don't reload - local state is already updated
     } catch (err) {
       console.error('Error saving daily plans:', err);
       throw err;
