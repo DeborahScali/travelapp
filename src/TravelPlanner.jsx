@@ -298,19 +298,38 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {} }) => {
   const handleAddPlace = async () => {
     const selectedDayData = dailyPlans.find(d => d.id === selectedDay);
     let finalPlaceForm = { ...placeForm };
-    
+
     // If there's a previous place and we have an API key, calculate distance and time
     if (selectedDayData && selectedDayData.places.length > 0 && mapsApiKey) {
       const previousPlace = selectedDayData.places[selectedDayData.places.length - 1];
+
+      // First, calculate distance to determine the best default transport mode
+      const distanceResult = await calculateDistanceAndTime(
+        previousPlace.location || previousPlace.address,
+        placeForm.location || placeForm.address,
+        'walking' // Get walking distance first to determine mode
+      );
+
+      // Determine default transport mode based on distance
+      let defaultMode = 'walking';
+      if (!distanceResult.error && distanceResult.distance) {
+        const distanceKm = parseFloat(distanceResult.distance);
+        if (distanceKm >= 1) {
+          defaultMode = 'transit';
+        }
+      }
+
+      // Now calculate with the determined transport mode
       const result = await calculateDistanceAndTime(
         previousPlace.location || previousPlace.address,
         placeForm.location || placeForm.address,
-        placeForm.transportMode
+        defaultMode
       );
-      
+
       if (!result.error) {
         finalPlaceForm = {
           ...placeForm,
+          transportMode: defaultMode,
           distance: result.distance,
           transportTime: result.time,
           isAutoCalculated: result.isAutoCalculated || false
@@ -615,15 +634,28 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {} }) => {
     setPlaceSearchLoading(true);
     try {
       await waitForGoogleMaps();
-      const service = new window.google.maps.places.AutocompleteService();
-      service.getPlacePredictions({ input: query }, (predictions, status) => {
-        if (status === window.google.maps.places.PlacesServiceStatus.OK) {
-          setPlaceSuggestions(predictions || []);
-        } else {
-          setPlaceSuggestions([]);
-        }
-        setPlaceSearchLoading(false);
+
+      // Use new AutocompleteSuggestion API
+      const { suggestions } = await window.google.maps.places.AutocompleteSuggestion.fetchAutocompleteSuggestions({
+        input: query,
+        includedPrimaryTypes: ['tourist_attraction', 'museum', 'restaurant', 'park', 'point_of_interest'],
       });
+
+      // Convert new format to match old format for compatibility
+      const predictions = suggestions.map(s => {
+        const pred = s.placePrediction;
+        return {
+          place_id: pred.placeId,
+          description: pred.text?.toString() || '',
+          structured_formatting: {
+            main_text: pred.structuredFormat?.mainText?.toString() || pred.text?.toString() || '',
+            secondary_text: pred.structuredFormat?.secondaryText?.toString() || ''
+          }
+        };
+      });
+
+      setPlaceSuggestions(predictions);
+      setPlaceSearchLoading(false);
     } catch (error) {
       console.error('Place autocomplete failed:', error);
       setPlaceSuggestions([]);
@@ -634,24 +666,26 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {} }) => {
   const handlePlaceSuggestionSelect = async (suggestion) => {
     try {
       await waitForGoogleMaps();
-      const service = new window.google.maps.places.PlacesService(mapInstanceRef.current || document.createElement('div'));
-      service.getDetails(
-        { placeId: suggestion.place_id, fields: ['name', 'formatted_address', 'geometry'] },
-        (place, status) => {
-          if (status === window.google.maps.places.PlacesServiceStatus.OK && place) {
-            const location = place.geometry?.location;
-            setPlaceForm({
-              ...placeForm,
-              name: place.name || placeSearchTerm,
-              address: place.formatted_address || placeSearchTerm,
-              placeId: suggestion.place_id,
-              location: location ? { lat: location.lat(), lng: location.lng() } : null
-            });
-            setPlaceSearchTerm(place.name || '');
-            setPlaceSuggestions([]);
-          }
-        }
-      );
+
+      // Use new Place API
+      const place = new window.google.maps.places.Place({
+        id: suggestion.place_id,
+      });
+
+      // Fetch place details
+      await place.fetchFields({
+        fields: ['displayName', 'formattedAddress', 'location']
+      });
+
+      setPlaceForm({
+        ...placeForm,
+        name: place.displayName || placeSearchTerm,
+        address: place.formattedAddress || placeSearchTerm,
+        placeId: suggestion.place_id,
+        location: place.location ? { lat: place.location.lat(), lng: place.location.lng() } : null
+      });
+      setPlaceSearchTerm(place.displayName || '');
+      setPlaceSuggestions([]);
     } catch (error) {
       console.error('Failed to get place details:', error);
     }
