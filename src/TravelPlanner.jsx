@@ -2,8 +2,10 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { DateRange } from 'react-date-range';
 import 'react-date-range/dist/styles.css';
 import 'react-date-range/dist/theme/default.css';
-import { Plus, Trash2, MapPin, Plane, DollarSign, TrendingUp, Calendar, Map as MapIcon, LogOut, User, ArrowLeft, X, ChevronDown } from 'lucide-react';
-import { FaWalking, FaSubway, FaCar } from 'react-icons/fa';
+import { Plus, Trash2, MapPin, Plane, DollarSign, TrendingUp, Calendar, Map as MapIcon, LogOut, User, ArrowLeft, X, ChevronDown, Coffee, StickyNote, Camera, Building } from 'lucide-react';
+import { FaWalking, FaSubway, FaCar, FaUtensils } from 'react-icons/fa';
+import { TbTimeDuration30 } from 'react-icons/tb';
+import { MdAttachMoney } from 'react-icons/md';
 import { useAuth } from './contexts/AuthContext';
 import { useTrips, useCurrentTrip, useFlights, useDailyPlans, useExpenses } from './hooks/useFirestore';
 
@@ -69,9 +71,12 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {} }) => {
 
   const [activeTab, setActiveTab] = useState('itinerary');
   const [showAddFlight, setShowAddFlight] = useState(false);
-  const [showAddPlace, setShowAddPlace] = useState(false);
   const [showAddExpense, setShowAddExpense] = useState(false);
   const [selectedDay, setSelectedDay] = useState(null);
+  const [showAddMenu, setShowAddMenu] = useState(false);
+  const [selectedAddType, setSelectedAddType] = useState(null);
+  const [showCurrencyPicker, setShowCurrencyPicker] = useState(null); // Store place ID
+  const [currencyPickerPosition, setCurrencyPickerPosition] = useState({ top: 0, left: 0 });
   // Temporarily hardcode the API key since env vars aren't loading
   const initialMapsKey = 'AIzaSyBFY-pyT3UnUN5bWc_G82xltZ7bqxInCo0';
   const [googleMapsApiKey, setGoogleMapsApiKey] = useState(initialMapsKey);
@@ -677,15 +682,86 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {} }) => {
         fields: ['displayName', 'formattedAddress', 'location']
       });
 
-      setPlaceForm({
-        ...placeForm,
+      const placeData = {
         name: place.displayName || placeSearchTerm,
         address: place.formattedAddress || placeSearchTerm,
         placeId: suggestion.place_id,
-        location: place.location ? { lat: place.location.lat(), lng: place.location.lng() } : null
+        location: place.location ? { lat: place.location.lat(), lng: place.location.lng() } : null,
+        notes: '',
+        transportMode: 'walking',
+        transportTime: '',
+        distance: '',
+        type: selectedAddType || 'place' // Store the type
+      };
+
+      // Auto-add the place immediately
+      const selectedDayData = dailyPlans.find(d => d.id === selectedDay);
+      let finalPlaceForm = { ...placeData };
+
+      // If there's a previous place and we have an API key, calculate distance and time
+      if (selectedDayData && selectedDayData.places.length > 0 && mapsApiKey) {
+        const previousPlace = selectedDayData.places[selectedDayData.places.length - 1];
+
+        // First, calculate distance to determine the best default transport mode
+        const distanceResult = await calculateDistanceAndTime(
+          previousPlace.location || previousPlace.address,
+          placeData.location || placeData.address,
+          'walking'
+        );
+
+        // Determine default transport mode based on distance
+        let defaultMode = 'walking';
+        if (!distanceResult.error && distanceResult.distance) {
+          const distanceKm = parseFloat(distanceResult.distance);
+          if (distanceKm >= 1) {
+            defaultMode = 'transit';
+          }
+        }
+
+        // Calculate with the determined transport mode
+        const result = await calculateDistanceAndTime(
+          previousPlace.location || previousPlace.address,
+          placeData.location || placeData.address,
+          defaultMode
+        );
+
+        if (!result.error) {
+          finalPlaceForm = {
+            ...placeData,
+            transportMode: defaultMode,
+            distance: result.distance,
+            transportTime: result.time,
+            isAutoCalculated: result.isAutoCalculated || false
+          };
+        }
+      }
+
+      // Add to daily plans
+      const updatedPlans = dailyPlans.map(day => {
+        if (day.id === selectedDay) {
+          return {
+            ...day,
+            places: [...day.places, { id: Date.now(), ...finalPlaceForm }]
+          };
+        }
+        return day;
       });
-      setPlaceSearchTerm(place.displayName || '');
+      setDailyPlans(updatedPlans);
+
+      // Reset form
+      setPlaceForm({
+        name: '',
+        address: '',
+        placeId: '',
+        location: null,
+        notes: '',
+        transportMode: 'walking',
+        transportTime: '',
+        distance: ''
+      });
+      setPlaceSearchTerm('');
       setPlaceSuggestions([]);
+      setSelectedAddType(null); // Reset to show menu again
     } catch (error) {
       console.error('Failed to get place details:', error);
     }
@@ -1729,23 +1805,17 @@ const parseLocalDate = (value) => {
                             place.visited ? 'bg-gray-50 border-gray-300' : 'hover:shadow-md'
                           }`}
                         >
-                          {/* Place Header - Always Visible */}
-                          <div
-                            className="p-3 sm:p-4 cursor-pointer"
-                            onClick={() => toggleVisited(selectedDay, place.id)}
-                          >
+                          {/* Place Header */}
+                          <div className="p-3 sm:p-4">
                             <div className="flex items-start gap-3">
-                              {/* Checkbox */}
-                              <div className={`flex-shrink-0 w-6 h-6 sm:w-7 sm:h-7 rounded-full border-2 flex items-center justify-center mt-1 transition-all ${
-                                place.visited
-                                  ? 'bg-[#26DE81] border-[#26DE81]'
-                                  : 'border-gray-300 hover:border-[#FF6B6B]'
-                              }`}>
-                                {place.visited && (
-                                  <svg className="w-4 h-4 text-white" fill="none" strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path d="M5 13l4 4L19 7"></path>
-                                  </svg>
-                                )}
+                              {/* Type Icon */}
+                              <div className="flex-shrink-0 mt-1">
+                                {place.type === 'place' && <div className="w-8 h-8 rounded-lg bg-blue-500 flex items-center justify-center"><Building size={16} className="text-white" /></div>}
+                                {place.type === 'restaurant' && <div className="w-8 h-8 rounded-lg bg-orange-500 flex items-center justify-center"><FaUtensils size={14} className="text-white" /></div>}
+                                {place.type === 'cafe' && <div className="w-8 h-8 rounded-lg bg-amber-600 flex items-center justify-center"><Coffee size={16} className="text-white" /></div>}
+                                {place.type === 'activity' && <div className="w-8 h-8 rounded-lg bg-green-500 flex items-center justify-center"><Camera size={16} className="text-white" /></div>}
+                                {place.type === 'note' && <div className="w-8 h-8 rounded-lg bg-purple-500 flex items-center justify-center"><StickyNote size={16} className="text-white" /></div>}
+                                {!place.type && <div className="w-8 h-8 rounded-lg bg-blue-500 flex items-center justify-center"><Building size={16} className="text-white" /></div>}
                               </div>
 
                               {/* Place Info */}
@@ -1754,25 +1824,251 @@ const parseLocalDate = (value) => {
                                   <span className="bg-gradient-to-r from-[#FF6B6B]/10 to-[#FFE66D]/10 text-[#FF6B6B] px-2 py-1 rounded-full text-xs sm:text-sm font-medium">
                                     #{index + 1}
                                   </span>
-                                  <h4 className={`font-bold text-base sm:text-lg ${place.visited ? 'line-through text-[#A1A1A1]' : ''}`}>
+                                  <h4 className="font-bold text-base sm:text-lg">
                                     {place.name}
                                   </h4>
                                 </div>
-                                {!place.visited && (
-                                  <>
-                                    <p className="text-[#A1A1A1] text-sm mb-1">{place.address}</p>
-                                    {place.notes && (
-                                      <p className="text-[#A1A1A1] text-sm italic">{place.notes}</p>
+                                <p className="text-[#A1A1A1] text-sm mb-2">{place.address}</p>
+
+                                {/* Compact Metadata Inputs */}
+                                <div className="flex items-center gap-2 text-xs flex-wrap">
+                                  {/* Time */}
+                                  <div className="flex items-center gap-1">
+                                    <Calendar size={14} className="text-gray-400" />
+                                    <input
+                                      type="time"
+                                      value={place.visitTime || ''}
+                                      onChange={(e) => {
+                                        const updatedPlans = dailyPlans.map(d => ({
+                                          ...d,
+                                          places: d.places.map(p =>
+                                            p.id === place.id && d.id === selectedDay
+                                              ? { ...p, visitTime: e.target.value }
+                                              : p
+                                          )
+                                        }));
+                                        setDailyPlans(updatedPlans);
+                                      }}
+                                      onClick={(e) => e.stopPropagation()}
+                                      className="w-16 px-1 py-0.5 border border-gray-300 rounded text-xs focus:border-[#4ECDC4] focus:outline-none"
+                                      placeholder="--:--"
+                                    />
+                                  </div>
+
+                                  <span className="text-gray-300">|</span>
+
+                                  {/* Duration */}
+                                  <div className="flex items-center gap-1">
+                                    <TbTimeDuration30 size={14} className="text-gray-400" />
+                                    <input
+                                      type="number"
+                                      step="0.5"
+                                      value={place.duration || ''}
+                                      onChange={(e) => {
+                                        const updatedPlans = dailyPlans.map(d => ({
+                                          ...d,
+                                          places: d.places.map(p =>
+                                            p.id === place.id && d.id === selectedDay
+                                              ? { ...p, duration: e.target.value }
+                                              : p
+                                          )
+                                        }));
+                                        setDailyPlans(updatedPlans);
+                                      }}
+                                      onClick={(e) => e.stopPropagation()}
+                                      className="w-12 px-1 py-0.5 border border-gray-300 rounded text-xs focus:border-[#4ECDC4] focus:outline-none"
+                                      placeholder="1.5"
+                                    />
+                                    <span className="text-gray-500">h</span>
+                                  </div>
+
+                                  <span className="text-gray-300">|</span>
+
+                                  {/* Cost */}
+                                  <div className="flex items-center gap-1 relative">
+                                    <MdAttachMoney size={16} className="text-gray-400" />
+                                    <input
+                                      type="number"
+                                      step="0.01"
+                                      value={place.cost || ''}
+                                      onChange={(e) => {
+                                        const updatedPlans = dailyPlans.map(d => ({
+                                          ...d,
+                                          places: d.places.map(p =>
+                                            p.id === place.id && d.id === selectedDay
+                                              ? { ...p, cost: e.target.value }
+                                              : p
+                                          )
+                                        }));
+                                        setDailyPlans(updatedPlans);
+                                      }}
+                                      onClick={(e) => e.stopPropagation()}
+                                      className="w-16 px-1 py-0.5 border border-gray-300 rounded text-xs focus:border-[#4ECDC4] focus:outline-none"
+                                      placeholder="25.00"
+                                    />
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        const rect = e.currentTarget.getBoundingClientRect();
+                                        setCurrencyPickerPosition({
+                                          top: rect.bottom + 8,
+                                          left: rect.right - 180
+                                        });
+                                        setShowCurrencyPicker(showCurrencyPicker === place.id ? null : place.id);
+                                      }}
+                                      className="text-gray-500 hover:text-[#4ECDC4] transition-colors cursor-pointer text-xs font-medium"
+                                    >
+                                      {(place.currency || 'EUR') === 'EUR' && '€'}
+                                      {(place.currency || 'EUR') === 'USD' && '$'}
+                                      {(place.currency || 'EUR') === 'GBP' && '£'}
+                                      {(place.currency || 'EUR') === 'CHF' && 'CHF'}
+                                      {(place.currency || 'EUR') === 'BRL' && 'R$'}
+                                    </button>
+
+                                    {/* Currency Picker Popup */}
+                                    {showCurrencyPicker === place.id && (
+                                      <>
+                                        {/* Backdrop to close picker when clicking outside */}
+                                        <div
+                                          className="fixed inset-0 z-[998]"
+                                          onClick={() => setShowCurrencyPicker(null)}
+                                        />
+                                        <div
+                                          className="fixed bg-white rounded-lg shadow-2xl border border-gray-200 py-1 z-[999] min-w-[180px]"
+                                          style={{
+                                            top: `${currencyPickerPosition.top}px`,
+                                            left: `${currencyPickerPosition.left}px`
+                                          }}
+                                          onClick={(e) => e.stopPropagation()}
+                                        >
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            const updatedPlans = dailyPlans.map(d => ({
+                                              ...d,
+                                              places: d.places.map(p =>
+                                                p.id === place.id && d.id === selectedDay
+                                                  ? { ...p, currency: 'EUR' }
+                                                  : p
+                                              )
+                                            }));
+                                            setDailyPlans(updatedPlans);
+                                            setShowCurrencyPicker(null);
+                                          }}
+                                          className={`w-full text-left px-3 py-1.5 hover:bg-gray-100 transition-colors flex items-center justify-between ${(place.currency || 'EUR') === 'EUR' ? 'bg-[#4ECDC4] bg-opacity-10' : ''}`}
+                                        >
+                                          <span className="text-sm text-gray-700 flex items-center gap-2">
+                                            <span className="text-lg">🇪🇺</span>
+                                            Euro (EUR)
+                                          </span>
+                                          {(place.currency || 'EUR') === 'EUR' && <span className="text-[#4ECDC4] text-xs">✓</span>}
+                                        </button>
+
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            const updatedPlans = dailyPlans.map(d => ({
+                                              ...d,
+                                              places: d.places.map(p =>
+                                                p.id === place.id && d.id === selectedDay
+                                                  ? { ...p, currency: 'USD' }
+                                                  : p
+                                              )
+                                            }));
+                                            setDailyPlans(updatedPlans);
+                                            setShowCurrencyPicker(null);
+                                          }}
+                                          className={`w-full text-left px-3 py-1.5 hover:bg-gray-100 transition-colors flex items-center justify-between ${(place.currency || 'EUR') === 'USD' ? 'bg-[#4ECDC4] bg-opacity-10' : ''}`}
+                                        >
+                                          <span className="text-sm text-gray-700 flex items-center gap-2">
+                                            <span className="text-lg">🇺🇸</span>
+                                            US Dollar (USD)
+                                          </span>
+                                          {(place.currency || 'EUR') === 'USD' && <span className="text-[#4ECDC4] text-xs">✓</span>}
+                                        </button>
+
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            const updatedPlans = dailyPlans.map(d => ({
+                                              ...d,
+                                              places: d.places.map(p =>
+                                                p.id === place.id && d.id === selectedDay
+                                                  ? { ...p, currency: 'GBP' }
+                                                  : p
+                                              )
+                                            }));
+                                            setDailyPlans(updatedPlans);
+                                            setShowCurrencyPicker(null);
+                                          }}
+                                          className={`w-full text-left px-3 py-1.5 hover:bg-gray-100 transition-colors flex items-center justify-between ${(place.currency || 'EUR') === 'GBP' ? 'bg-[#4ECDC4] bg-opacity-10' : ''}`}
+                                        >
+                                          <span className="text-sm text-gray-700 flex items-center gap-2">
+                                            <span className="text-lg">🇬🇧</span>
+                                            British Pound (GBP)
+                                          </span>
+                                          {(place.currency || 'EUR') === 'GBP' && <span className="text-[#4ECDC4] text-xs">✓</span>}
+                                        </button>
+
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            const updatedPlans = dailyPlans.map(d => ({
+                                              ...d,
+                                              places: d.places.map(p =>
+                                                p.id === place.id && d.id === selectedDay
+                                                  ? { ...p, currency: 'CHF' }
+                                                  : p
+                                              )
+                                            }));
+                                            setDailyPlans(updatedPlans);
+                                            setShowCurrencyPicker(null);
+                                          }}
+                                          className={`w-full text-left px-3 py-1.5 hover:bg-gray-100 transition-colors flex items-center justify-between ${(place.currency || 'EUR') === 'CHF' ? 'bg-[#4ECDC4] bg-opacity-10' : ''}`}
+                                        >
+                                          <span className="text-sm text-gray-700 flex items-center gap-2">
+                                            <span className="text-lg">🇨🇭</span>
+                                            Swiss Franc (CHF)
+                                          </span>
+                                          {(place.currency || 'EUR') === 'CHF' && <span className="text-[#4ECDC4] text-xs">✓</span>}
+                                        </button>
+
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            const updatedPlans = dailyPlans.map(d => ({
+                                              ...d,
+                                              places: d.places.map(p =>
+                                                p.id === place.id && d.id === selectedDay
+                                                  ? { ...p, currency: 'BRL' }
+                                                  : p
+                                              )
+                                            }));
+                                            setDailyPlans(updatedPlans);
+                                            setShowCurrencyPicker(null);
+                                          }}
+                                          className={`w-full text-left px-3 py-1.5 hover:bg-gray-100 transition-colors flex items-center justify-between ${(place.currency || 'EUR') === 'BRL' ? 'bg-[#4ECDC4] bg-opacity-10' : ''}`}
+                                        >
+                                          <span className="text-sm text-gray-700 flex items-center gap-2">
+                                            <span className="text-lg">🇧🇷</span>
+                                            Brazilian Real (BRL)
+                                          </span>
+                                          {(place.currency || 'EUR') === 'BRL' && <span className="text-[#4ECDC4] text-xs">✓</span>}
+                                        </button>
+                                      </div>
+                                      </>
                                     )}
-                                  </>
-                                )}
-                                {place.visited && (
-                                  <p className="text-[#A1A1A1] text-sm">✓ Visited</p>
+                                  </div>
+                                </div>
+
+                                {/* Notes */}
+                                {place.notes && (
+                                  <p className="text-[#A1A1A1] text-sm italic mt-2">{place.notes}</p>
                                 )}
                               </div>
 
-                              {/* Action Buttons - Only show when not visited */}
-                              {!place.visited && (
+                              {/* Action Buttons */}
+                              {(
                                 <div className="flex gap-1 sm:gap-2 flex-shrink-0">
                                   <button
                                     onClick={(e) => {
@@ -1802,146 +2098,172 @@ const parseLocalDate = (value) => {
                     ))}
                   </div>
 
-                  {/* Add Place Button */}
-                  <button
-                    onClick={() => setShowAddPlace(true)}
-                    className="mt-4 w-full px-4 py-3 bg-gradient-to-r from-[#FF6B6B] to-[#FF8E53] text-white rounded-xl hover:shadow-lg transition-all hover:scale-[1.02] flex items-center justify-center gap-2 text-sm sm:text-base font-medium"
-                  >
-                    <Plus size={20} />
-                    Add Place to This Day
-                  </button>
-                </div>
-              )}
+                  {/* Add Item Section */}
+                  <div className="mt-4">
+                    {!selectedAddType ? (
+                      /* Step 1: Show + button and menu */
+                      <div className="relative">
+                        <button
+                          onClick={() => setShowAddMenu(!showAddMenu)}
+                          className="w-full px-4 py-3 bg-gradient-to-r from-[#4ECDC4] to-[#3db8b0] text-white rounded-xl hover:shadow-lg transition-all flex items-center justify-center gap-2 font-medium"
+                        >
+                          <Plus size={20} />
+                          Add to This Day
+                        </button>
 
-              {/* Add Place Modal */}
-              {showAddPlace && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-                  <div className="bg-white rounded-lg p-4 sm:p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-                    <h3 className="text-xl sm:text-2xl font-bold mb-4">Add Place</h3>
-                    <div className="space-y-4">
-                      <input
-                        type="text"
-                        placeholder="Place name *"
-                        value={placeSearchTerm || placeForm.name}
+                        {/* Dropdown Menu */}
+                        {showAddMenu && (
+                          <div className="absolute z-10 w-full mt-2 bg-white rounded-xl shadow-xl border-2 border-gray-200 overflow-hidden">
+                            <button
+                              onClick={() => {
+                                setSelectedAddType('place');
+                                setShowAddMenu(false);
+                              }}
+                              className="w-full px-4 py-3 hover:bg-gray-50 transition-colors flex items-center gap-3 border-b border-gray-100"
+                            >
+                              <div className="w-10 h-10 rounded-lg bg-blue-500 flex items-center justify-center">
+                                <Building size={20} className="text-white" />
+                              </div>
+                              <div className="text-left">
+                                <div className="font-semibold text-gray-900">Place / Attraction</div>
+                                <div className="text-xs text-gray-500">Museums, landmarks, parks</div>
+                              </div>
+                            </button>
+
+                            <button
+                              onClick={() => {
+                                setSelectedAddType('restaurant');
+                                setShowAddMenu(false);
+                              }}
+                              className="w-full px-4 py-3 hover:bg-gray-50 transition-colors flex items-center gap-3 border-b border-gray-100"
+                            >
+                              <div className="w-10 h-10 rounded-lg bg-orange-500 flex items-center justify-center">
+                                <FaUtensils size={18} className="text-white" />
+                              </div>
+                              <div className="text-left">
+                                <div className="font-semibold text-gray-900">Restaurant</div>
+                                <div className="text-xs text-gray-500">Places to eat</div>
+                              </div>
+                            </button>
+
+                            <button
+                              onClick={() => {
+                                setSelectedAddType('cafe');
+                                setShowAddMenu(false);
+                              }}
+                              className="w-full px-4 py-3 hover:bg-gray-50 transition-colors flex items-center gap-3 border-b border-gray-100"
+                            >
+                              <div className="w-10 h-10 rounded-lg bg-amber-600 flex items-center justify-center">
+                                <Coffee size={20} className="text-white" />
+                              </div>
+                              <div className="text-left">
+                                <div className="font-semibold text-gray-900">Café / Bar</div>
+                                <div className="text-xs text-gray-500">Coffee shops, bars</div>
+                              </div>
+                            </button>
+
+                            <button
+                              onClick={() => {
+                                setSelectedAddType('activity');
+                                setShowAddMenu(false);
+                              }}
+                              className="w-full px-4 py-3 hover:bg-gray-50 transition-colors flex items-center gap-3 border-b border-gray-100"
+                            >
+                              <div className="w-10 h-10 rounded-lg bg-green-500 flex items-center justify-center">
+                                <Camera size={20} className="text-white" />
+                              </div>
+                              <div className="text-left">
+                                <div className="font-semibold text-gray-900">Activity</div>
+                                <div className="text-xs text-gray-500">Tours, experiences</div>
+                              </div>
+                            </button>
+
+                            <button
+                              onClick={() => {
+                                setSelectedAddType('note');
+                                setShowAddMenu(false);
+                              }}
+                              className="w-full px-4 py-3 hover:bg-gray-50 transition-colors flex items-center gap-3"
+                            >
+                              <div className="w-10 h-10 rounded-lg bg-purple-500 flex items-center justify-center">
+                                <StickyNote size={20} className="text-white" />
+                              </div>
+                              <div className="text-left">
+                                <div className="font-semibold text-gray-900">Note</div>
+                                <div className="text-xs text-gray-500">Quick reminder or note</div>
+                              </div>
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      /* Step 2: Show search bar with type indicator */
+                      <div className="border-2 border-dashed border-gray-300 rounded-xl p-4 bg-gray-50">
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center gap-2">
+                            {selectedAddType === 'place' && <div className="w-8 h-8 rounded-lg bg-blue-500 flex items-center justify-center"><Building size={16} className="text-white" /></div>}
+                            {selectedAddType === 'restaurant' && <div className="w-8 h-8 rounded-lg bg-orange-500 flex items-center justify-center"><FaUtensils size={14} className="text-white" /></div>}
+                            {selectedAddType === 'cafe' && <div className="w-8 h-8 rounded-lg bg-amber-600 flex items-center justify-center"><Coffee size={16} className="text-white" /></div>}
+                            {selectedAddType === 'activity' && <div className="w-8 h-8 rounded-lg bg-green-500 flex items-center justify-center"><Camera size={16} className="text-white" /></div>}
+                            {selectedAddType === 'note' && <div className="w-8 h-8 rounded-lg bg-purple-500 flex items-center justify-center"><StickyNote size={16} className="text-white" /></div>}
+                            <h3 className="text-lg font-semibold capitalize">Add {selectedAddType}</h3>
+                          </div>
+                          <button
+                            onClick={() => {
+                              setSelectedAddType(null);
+                              setPlaceForm({
+                                name: '',
+                                address: '',
+                                placeId: '',
+                                location: null,
+                                notes: '',
+                                transportMode: 'walking',
+                                transportTime: '',
+                                distance: ''
+                              });
+                              setPlaceSearchTerm('');
+                              setPlaceSuggestions([]);
+                            }}
+                            className="text-gray-400 hover:text-gray-600"
+                          >
+                            <X size={20} />
+                          </button>
+                        </div>
+
+                        {/* Search bar */}
+                        <div className="relative">
+                          <input
+                            type="text"
+                            placeholder="Search for a place..."
+                            value={placeSearchTerm || placeForm.name}
                         onChange={(e) => {
                           setPlaceSearchTerm(e.target.value);
                           setPlaceForm({ ...placeForm, name: e.target.value });
                           fetchPlaceSuggestions(e.target.value);
                         }}
-                        className="w-full px-3 py-2 border rounded-lg"
+                        className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-[#4ECDC4] focus:outline-none bg-white"
                       />
                       {mapsApiKey && placeSuggestions.length > 0 && (
-                        <div className="border rounded-lg divide-y max-h-60 overflow-y-auto">
+                        <div className="absolute z-10 w-full mt-1 bg-white border-2 border-gray-200 rounded-lg shadow-lg divide-y max-h-60 overflow-y-auto">
                           {placeSuggestions.map((s) => (
                             <button
                               key={s.place_id}
                               onClick={() => handlePlaceSuggestionSelect(s)}
-                              className="w-full text-left px-3 py-2 hover:bg-gray-50"
+                              className="w-full text-left px-4 py-3 hover:bg-gray-50 transition-colors"
                             >
-                              <div className="font-medium text-sm">{s.description}</div>
-                              <div className="text-xs text-gray-500">Google Places</div>
+                              <div className="font-medium text-sm">{s.structured_formatting?.main_text || s.description}</div>
+                              <div className="text-xs text-gray-500">{s.structured_formatting?.secondary_text || 'Google Places'}</div>
                             </button>
                           ))}
                         </div>
                       )}
                       {placeSearchLoading && (
-                        <div className="text-xs text-gray-500">Searching Google Places...</div>
+                        <div className="absolute right-3 top-3 text-sm text-gray-400">Searching...</div>
                       )}
-                      <input
-                        type="text"
-                        placeholder="Address *"
-                        value={placeForm.address}
-                        onChange={(e) => setPlaceForm({ ...placeForm, address: e.target.value })}
-                        className="w-full px-3 py-2 border rounded-lg"
-                      />
-                      <textarea
-                        placeholder="Notes"
-                        value={placeForm.notes}
-                        onChange={(e) => setPlaceForm({ ...placeForm, notes: e.target.value })}
-                        className="w-full px-3 py-2 border rounded-lg"
-                        rows="3"
-                      />
-                      
-                      <div className="border-t pt-4">
-                        <h4 className="font-medium mb-3">Transportation from previous place</h4>
-                            {mapsApiKey && selectedDayData && selectedDayData.places.length > 0 && (
-                        <div className="mb-3 p-3 bg-blue-50 rounded-lg text-sm text-blue-700">
-                          ℹ️ Distance and time will be automatically calculated when you add this place
-                        </div>
-                      )}
-                          {!mapsApiKey && selectedDayData && selectedDayData.places.length > 0 && (
-                        <div className="mb-3 p-3 bg-yellow-50 rounded-lg text-sm text-yellow-700">
-                            ⚠️ Set up Google Maps API to auto-calculate distance and time
-                          </div>
-                        )}
-                        <div className="grid grid-cols-2 gap-4">
-                          <select
-                            value={placeForm.transportMode}
-                            onChange={(e) => setPlaceForm({ ...placeForm, transportMode: e.target.value })}
-                            className="px-3 py-2 border rounded-lg"
-                          >
-                            <option value="walking">Walking</option>
-                            <option value="metro">Metro</option>
-                            <option value="bus">Bus</option>
-                            <option value="train">Train</option>
-                            <option value="car">Car</option>
-                            <option value="other">Other</option>
-                          </select>
-                          <input
-                            type="number"
-                            placeholder={mapsApiKey ? "Auto-calculated" : "Time (minutes)"}
-                            value={placeForm.transportTime}
-                            onChange={(e) => setPlaceForm({ ...placeForm, transportTime: e.target.value })}
-                            className="px-3 py-2 border rounded-lg"
-                            disabled={calculatingDistance}
-                          />
-                          <input
-                            type="number"
-                            step="0.1"
-                            placeholder={mapsApiKey ? "Auto-calculated" : "Distance (km)"}
-                            value={placeForm.distance}
-                            onChange={(e) => setPlaceForm({ ...placeForm, distance: e.target.value })}
-                            className="px-3 py-2 border rounded-lg"
-                            disabled={calculatingDistance}
-                          />
-                        </div>
-                        
-                        {placeForm.transportMode === 'metro' && (
-                          <div className="grid grid-cols-2 gap-4 mt-4">
-                            <input
-                              type="text"
-                              placeholder="Metro station"
-                              value={placeForm.metroStation}
-                              onChange={(e) => setPlaceForm({ ...placeForm, metroStation: e.target.value })}
-                              className="px-3 py-2 border rounded-lg"
-                            />
-                            <input
-                              type="text"
-                              placeholder="Metro line"
-                              value={placeForm.metroLine}
-                              onChange={(e) => setPlaceForm({ ...placeForm, metroLine: e.target.value })}
-                              className="px-3 py-2 border rounded-lg"
-                            />
-                          </div>
-                        )}
+                    </div>
+
                       </div>
-                    </div>
-                    
-                    <div className="flex flex-col sm:flex-row gap-3 mt-6">
-                      <button
-                        onClick={handleAddPlace}
-                        disabled={!placeForm.name || !placeForm.address || calculatingDistance}
-                        className="flex-1 px-4 py-2 bg-gradient-to-r from-[#FF6B6B] to-[#FF8E53] text-white rounded-xl hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm sm:text-base font-medium"
-                      >
-                        {calculatingDistance ? 'Calculating Route...' : 'Add Place'}
-                      </button>
-                      <button
-                        onClick={() => setShowAddPlace(false)}
-                        className="flex-1 px-4 py-2 border-2 border-gray-200 rounded-xl hover:bg-gray-50 text-sm sm:text-base transition-all"
-                      >
-                        Cancel
-                      </button>
-                    </div>
+                    )}
                   </div>
                 </div>
               )}
