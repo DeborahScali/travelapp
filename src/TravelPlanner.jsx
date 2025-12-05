@@ -2345,76 +2345,173 @@ const parseLocalDate = (value) => {
                           </div>
                         </div>
 
-                        {/* Add Place Between Items */}
-                        {insertingAtIndex === index + 1 && (
-                          <div className="my-2 p-3 border-2 border-dashed border-blue-300 rounded-lg bg-blue-50">
-                            <div className="flex items-center gap-2 mb-2">
-                              <Plus size={16} className="text-blue-600" />
-                              <input
-                                type="text"
-                                placeholder="Quick add place name..."
-                                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none text-sm"
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter' && e.target.value.trim()) {
-                                    // Insert place at current index
-                                    const newPlace = {
-                                      id: Date.now(),
-                                      name: e.target.value.trim(),
-                                      type: selectedAddType || 'place',
-                                      address: '',
-                                      notes: '',
-                                      visited: false,
-                                      transportMode: 'walking',
-                                      transportTime: '',
-                                      distance: ''
-                                    };
-
-                                    const updatedPlans = dailyPlans.map(day => {
-                                      if (day.id === selectedDay) {
-                                        const places = [...day.places];
-                                        places.splice(index + 1, 0, newPlace);
-                                        return { ...day, places };
-                                      }
-                                      return day;
-                                    });
-                                    setDailyPlans(updatedPlans);
-                                    setInsertingAtIndex(null);
-                                    e.target.value = '';
-                                  } else if (e.key === 'Escape') {
-                                    setInsertingAtIndex(null);
-                                  }
-                                }}
-                                onClick={(e) => e.stopPropagation()}
-                                autoFocus
-                              />
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setInsertingAtIndex(null);
-                                }}
-                                className="p-1 text-gray-400 hover:text-gray-600"
-                              >
-                                <X size={16} />
-                              </button>
-                            </div>
-                            <p className="text-xs text-gray-500">Press Enter to add, Esc to cancel</p>
-                          </div>
-                        )}
-
-                        {/* Insert Button Between Places */}
-                        {insertingAtIndex !== index + 1 && (
+                        {/* Insert Button Between Places - Aligned Left */}
+                        <div className="my-2 relative">
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              setInsertingAtIndex(index + 1);
+                              setInsertingAtIndex(insertingAtIndex === index + 1 ? null : index + 1);
                             }}
-                            className="w-full my-2 py-1 flex items-center justify-center gap-1 text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded-lg transition-all group"
+                            className="ml-12 px-2 py-1 flex items-center gap-1 text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded-lg transition-all"
+                            title="Add place here"
                           >
-                            <div className="h-px flex-1 bg-gray-200 group-hover:bg-blue-300"></div>
-                            <Plus size={14} className="flex-shrink-0" />
-                            <div className="h-px flex-1 bg-gray-200 group-hover:bg-blue-300"></div>
+                            <Plus size={14} />
+                            <span className="text-xs">Add here</span>
                           </button>
-                        )}
+
+                          {/* Dropdown Menu for Insert */}
+                          {insertingAtIndex === index + 1 && !selectedAddType && (
+                            <div className="ml-12 mt-1 absolute z-20 w-64 bg-white rounded-xl shadow-xl border-2 border-gray-200 overflow-hidden">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedAddType('place');
+                                }}
+                                className="w-full px-3 py-2 hover:bg-gray-50 transition-colors flex items-center gap-2 border-b border-gray-100"
+                              >
+                                <div className="w-8 h-8 rounded-lg bg-blue-500 flex items-center justify-center">
+                                  <Building size={16} className="text-white" />
+                                </div>
+                                <div className="text-left">
+                                  <div className="font-semibold text-sm text-gray-900">Place / Attraction</div>
+                                  <div className="text-xs text-gray-500">Museums, landmarks, parks</div>
+                                </div>
+                              </button>
+
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedAddType('restaurant');
+                                }}
+                                className="w-full px-3 py-2 hover:bg-gray-50 transition-colors flex items-center gap-2 border-b border-gray-100"
+                              >
+                                <div className="w-8 h-8 rounded-lg bg-orange-500 flex items-center justify-center">
+                                  <FaUtensils size={14} className="text-white" />
+                                </div>
+                                <div className="text-left">
+                                  <div className="font-semibold text-sm text-gray-900">Restaurant</div>
+                                  <div className="text-xs text-gray-500">Places to eat</div>
+                                </div>
+                              </button>
+
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedAddType('cafe');
+                                }}
+                                className="w-full px-3 py-2 hover:bg-gray-50 transition-colors flex items-center gap-2 border-b border-gray-100"
+                              >
+                                <div className="w-8 h-8 rounded-lg bg-amber-600 flex items-center justify-center">
+                                  <Coffee size={16} className="text-white" />
+                                </div>
+                                <div className="text-left">
+                                  <div className="font-semibold text-sm text-gray-900">Café / Bar</div>
+                                  <div className="text-xs text-gray-500">Coffee shops, bars</div>
+                                </div>
+                              </button>
+
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedAddType('activity');
+                                }}
+                                className="w-full px-3 py-2 hover:bg-gray-50 transition-colors flex items-center gap-2 border-b border-gray-100"
+                              >
+                                <div className="w-8 h-8 rounded-lg bg-green-500 flex items-center justify-center">
+                                  <Camera size={16} className="text-white" />
+                                </div>
+                                <div className="text-left">
+                                  <div className="font-semibold text-sm text-gray-900">Activity</div>
+                                  <div className="text-xs text-gray-500">Tours, experiences</div>
+                                </div>
+                              </button>
+
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedAddType('note');
+                                }}
+                                className="w-full px-3 py-2 hover:bg-gray-50 transition-colors flex items-center gap-2"
+                              >
+                                <div className="w-8 h-8 rounded-lg bg-purple-500 flex items-center justify-center">
+                                  <StickyNote size={16} className="text-white" />
+                                </div>
+                                <div className="text-left">
+                                  <div className="font-semibold text-sm text-gray-900">Note</div>
+                                  <div className="text-xs text-gray-500">Quick reminder or note</div>
+                                </div>
+                              </button>
+                            </div>
+                          )}
+
+                          {/* Search Form for Insert */}
+                          {insertingAtIndex === index + 1 && selectedAddType && (
+                            <div className="ml-12 mt-1 p-3 border-2 border-dashed border-blue-300 rounded-lg bg-blue-50">
+                              <div className="flex items-center gap-2">
+                                {/* Type Icon */}
+                                <div className="flex-shrink-0">
+                                  {selectedAddType === 'place' && <div className="w-6 h-6 rounded-lg bg-blue-500 flex items-center justify-center"><Building size={12} className="text-white" /></div>}
+                                  {selectedAddType === 'restaurant' && <div className="w-6 h-6 rounded-lg bg-orange-500 flex items-center justify-center"><FaUtensils size={10} className="text-white" /></div>}
+                                  {selectedAddType === 'cafe' && <div className="w-6 h-6 rounded-lg bg-amber-600 flex items-center justify-center"><Coffee size={12} className="text-white" /></div>}
+                                  {selectedAddType === 'activity' && <div className="w-6 h-6 rounded-lg bg-green-500 flex items-center justify-center"><Camera size={12} className="text-white" /></div>}
+                                  {selectedAddType === 'note' && <div className="w-6 h-6 rounded-lg bg-purple-500 flex items-center justify-center"><StickyNote size={12} className="text-white" /></div>}
+                                </div>
+
+                                {/* Input */}
+                                <input
+                                  type="text"
+                                  placeholder="Type name and press Enter..."
+                                  className="flex-1 px-2 py-1 border border-gray-300 rounded text-sm focus:border-blue-500 focus:outline-none"
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter' && e.target.value.trim()) {
+                                      const newPlace = {
+                                        id: Date.now(),
+                                        name: e.target.value.trim(),
+                                        type: selectedAddType,
+                                        address: '',
+                                        notes: '',
+                                        visited: false,
+                                        transportMode: 'walking',
+                                        transportTime: '',
+                                        distance: ''
+                                      };
+
+                                      const updatedPlans = dailyPlans.map(day => {
+                                        if (day.id === selectedDay) {
+                                          const places = [...day.places];
+                                          places.splice(index + 1, 0, newPlace);
+                                          return { ...day, places };
+                                        }
+                                        return day;
+                                      });
+                                      setDailyPlans(updatedPlans);
+                                      setInsertingAtIndex(null);
+                                      setSelectedAddType(null);
+                                      e.target.value = '';
+                                    } else if (e.key === 'Escape') {
+                                      setInsertingAtIndex(null);
+                                      setSelectedAddType(null);
+                                    }
+                                  }}
+                                  onClick={(e) => e.stopPropagation()}
+                                  autoFocus
+                                />
+
+                                {/* Close Button */}
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setInsertingAtIndex(null);
+                                    setSelectedAddType(null);
+                                  }}
+                                  className="p-1 text-gray-400 hover:text-gray-600 flex-shrink-0"
+                                >
+                                  <X size={14} />
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       </React.Fragment>
                     ))}
                   </div>
