@@ -6,6 +6,7 @@ import { Plus, Trash2, MapPin, Plane, DollarSign, TrendingUp, Calendar, Map as M
 import { FaWalking, FaSubway, FaCar, FaUtensils } from 'react-icons/fa';
 import { TbTimeDuration30 } from 'react-icons/tb';
 import { MdAttachMoney } from 'react-icons/md';
+import { IoAddCircleOutline } from 'react-icons/io5';
 import { useAuth } from './contexts/AuthContext';
 import { useTrips, useCurrentTrip, useFlights, useDailyPlans, useExpenses } from './hooks/useFirestore';
 
@@ -2352,11 +2353,10 @@ const parseLocalDate = (value) => {
                               e.stopPropagation();
                               setInsertingAtIndex(insertingAtIndex === index + 1 ? null : index + 1);
                             }}
-                            className="ml-12 px-2 py-1 flex items-center gap-1 text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded-lg transition-all"
+                            className="ml-12 text-gray-400 hover:text-blue-500 transition-all"
                             title="Add place here"
                           >
-                            <Plus size={14} />
-                            <span className="text-xs">Add here</span>
+                            <IoAddCircleOutline size={24} />
                           </button>
 
                           {/* Dropdown Menu for Insert */}
@@ -2523,10 +2523,10 @@ const parseLocalDate = (value) => {
                       <div className="relative">
                         <button
                           onClick={() => setShowAddMenu(!showAddMenu)}
-                          className="w-full px-4 py-3 bg-gradient-to-r from-[#4ECDC4] to-[#3db8b0] text-white rounded-xl hover:shadow-lg transition-all flex items-center justify-center gap-2 font-medium"
+                          className="w-full px-4 py-3 bg-gradient-to-r from-[#4ECDC4] to-[#3db8b0] text-white rounded-xl hover:shadow-lg transition-all flex items-center justify-center"
+                          title="Add to This Day"
                         >
-                          <Plus size={20} />
-                          Add to This Day
+                          <IoAddCircleOutline size={28} />
                         </button>
 
                         {/* Dropdown Menu */}
