@@ -602,6 +602,7 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {} }) => {
   const mapInstanceRef = useRef(null);
   const markersRef = useRef([]);
   const directionsRenderersRef = useRef([]);
+  const currentInfoWindowRef = useRef(null);
   const lastSavedDailyPlansRef = useRef(null); // Track last saved state to prevent loops
   const isSavingRef = useRef(false); // Track if we're currently saving
   const [showMapPanel, setShowMapPanel] = useState(true);
@@ -801,6 +802,14 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {} }) => {
         streetViewControl: false,
         fullscreenControl: false,
       });
+
+      // Close info window when clicking on the map (not on a marker)
+      mapInstanceRef.current.addListener('click', () => {
+        if (currentInfoWindowRef.current) {
+          currentInfoWindowRef.current.close();
+          currentInfoWindowRef.current = null;
+        }
+      });
     } catch (error) {
       console.error('Error creating map instance:', error);
     }
@@ -846,10 +855,50 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {} }) => {
             fontWeight: 'bold'
           }
         });
+        const getCurrencySymbol = (curr) => {
+          const symbols = { 'EUR': '€', 'USD': '$', 'GBP': '£', 'CHF': 'CHF', 'BRL': 'R$' };
+          return symbols[curr] || '€';
+        };
+
+        const getTypeIcon = (type) => {
+          const icons = {
+            'place': '🏛️',
+            'restaurant': '🍽️',
+            'cafe': '☕',
+            'activity': '📸',
+            'note': '📝'
+          };
+          return icons[type] || '📍';
+        };
+
+        const infoContent = `
+          <div style="max-width:280px;font-family:system-ui,-apple-system,sans-serif;">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+              <span style="font-size:20px;">${getTypeIcon(place.type)}</span>
+              <strong style="font-size:14px;color:#333;">${place.name || 'Place'}</strong>
+            </div>
+            ${place.address ? `<div style="color:#666;font-size:12px;margin-bottom:8px;">${place.address}</div>` : ''}
+            <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;font-size:11px;">
+              ${place.visitTime ? `<div style="background:#f0f0f0;padding:3px 8px;border-radius:4px;">🕐 ${place.visitTime}</div>` : ''}
+              ${place.duration ? `<div style="background:#f0f0f0;padding:3px 8px;border-radius:4px;">⏱️ ${place.duration}h</div>` : ''}
+              ${place.cost ? `<div style="background:#f0f0f0;padding:3px 8px;border-radius:4px;">💰 ${place.cost} ${getCurrencySymbol(place.currency)}</div>` : ''}
+            </div>
+            ${place.notes ? `<div style="margin-top:8px;padding:8px;background:#f9f9f9;border-radius:4px;font-size:12px;color:#555;font-style:italic;">${place.notes}</div>` : ''}
+          </div>
+        `;
+
         const info = new window.google.maps.InfoWindow({
-          content: `<div style="max-width:220px"><strong>${place.name || 'Place'}</strong><div style="color:#666;font-size:12px;">${place.address || ''}</div></div>`
+          content: infoContent
         });
-        marker.addListener('click', () => info.open({ anchor: marker, map: mapInstanceRef.current }));
+        marker.addListener('click', () => {
+          // Close currently open info window
+          if (currentInfoWindowRef.current) {
+            currentInfoWindowRef.current.close();
+          }
+          // Open new info window
+          info.open({ anchor: marker, map: mapInstanceRef.current });
+          currentInfoWindowRef.current = info;
+        });
         markersRef.current.push(marker);
         bounds.extend(pos);
         resolve(pos);
@@ -1801,7 +1850,18 @@ const parseLocalDate = (value) => {
 
                         {/* Place Card */}
                         <div
-                          className={`border rounded-lg overflow-hidden transition-all ${
+                          onClick={() => {
+                            // Trigger the corresponding map marker
+                            const markerIndex = selectedDayData.places.findIndex(p => p.id === place.id);
+                            if (markerIndex !== -1 && markersRef.current[markerIndex]) {
+                              window.google.maps.event.trigger(markersRef.current[markerIndex], 'click');
+                              // Ensure map panel is visible
+                              if (!showMapPanel) {
+                                setShowMapPanel(true);
+                              }
+                            }
+                          }}
+                          className={`border rounded-lg overflow-hidden transition-all cursor-pointer ${
                             place.visited ? 'bg-gray-50 border-gray-300' : 'hover:shadow-md'
                           }`}
                         >
