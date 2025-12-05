@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { DateRange } from 'react-date-range';
 import 'react-date-range/dist/styles.css';
 import 'react-date-range/dist/theme/default.css';
-import { Plus, Trash2, MapPin, Plane, DollarSign, TrendingUp, Calendar, Navigation, Train, Map as MapIcon, LogOut, User, ArrowLeft, X } from 'lucide-react';
+import { Plus, Trash2, MapPin, Plane, DollarSign, TrendingUp, Calendar, Navigation, Train, Map as MapIcon, LogOut, User, ArrowLeft, X, Car, Bus, ChevronDown } from 'lucide-react';
 import { useAuth } from './contexts/AuthContext';
 import { useTrips, useCurrentTrip, useFlights, useDailyPlans, useExpenses } from './hooks/useFirestore';
 
@@ -362,6 +362,46 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {} }) => {
     setDailyPlans(updatedPlans);
   };
 
+  const handleChangeTransportMode = async (dayId, placeId, newMode) => {
+    // Find the day and place
+    const day = dailyPlans.find(d => d.id === dayId);
+    if (!day) return;
+
+    const placeIndex = day.places.findIndex(p => p.id === placeId);
+    if (placeIndex <= 0) return; // Can't change transport mode for first place
+
+    const place = day.places[placeIndex];
+    const previousPlace = day.places[placeIndex - 1];
+
+    // Recalculate distance and time with new mode
+    let distanceData = { distance: '', time: '' };
+    if (mapsApiKey && previousPlace.address && place.address) {
+      distanceData = await calculateDistanceAndTime(
+        previousPlace.address,
+        place.address,
+        newMode
+      );
+    }
+
+    // Update the place with new transport mode and recalculated distance/time
+    const updatedPlans = dailyPlans.map(d => {
+      if (d.id === dayId) {
+        return {
+          ...d,
+          places: d.places.map(p =>
+            p.id === placeId
+              ? { ...p, transportMode: newMode, distance: distanceData.distance, transportTime: distanceData.time }
+              : p
+          )
+        };
+      }
+      return d;
+    });
+
+    setDailyPlans(updatedPlans);
+    setChangingTransportMode(null); // Close the dropdown
+  };
+
   const handleDeleteFlight = async (flightId) => {
     try {
       await deleteFlightFromFirestore(flightId);
@@ -466,6 +506,8 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {} }) => {
   const directionsRenderersRef = useRef([]);
   const [showMapPanel, setShowMapPanel] = useState(true);
   const [mapLoading, setMapLoading] = useState(false);
+  const [mapPlaceholderDismissed, setMapPlaceholderDismissed] = useState(false);
+  const [changingTransportMode, setChangingTransportMode] = useState(null); // {dayId, placeId}
 
   const waitForGoogleMaps = () => {
     if (mapsReady && window.google?.maps) {
@@ -562,18 +604,18 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {} }) => {
   // Initialize map instance when panel is shown and Maps is ready
   useEffect(() => {
     if (!showMapPanel || !mapsReady || !mapRef.current) return;
-    if (!mapInstanceRef.current) {
-      try {
-        mapInstanceRef.current = new window.google.maps.Map(mapRef.current, {
-          center: { lat: 46.8182, lng: 8.2275 }, // Center of Switzerland
-          zoom: 7,
-          mapTypeControl: false,
-          streetViewControl: false,
-          fullscreenControl: false,
-        });
-      } catch (error) {
-        console.error('Error creating map instance:', error);
-      }
+
+    // Always recreate the map when showing the panel since the DOM element is recreated
+    try {
+      mapInstanceRef.current = new window.google.maps.Map(mapRef.current, {
+        center: { lat: 46.8182, lng: 8.2275 }, // Center of Switzerland
+        zoom: 7,
+        mapTypeControl: false,
+        streetViewControl: false,
+        fullscreenControl: false,
+      });
+    } catch (error) {
+      console.error('Error creating map instance:', error);
     }
   }, [showMapPanel, mapsReady]);
 
@@ -694,6 +736,18 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {} }) => {
 
     return () => { cancelled = true; };
   }, [showMapPanel, mapsReady, selectedDayData]);
+
+  // Close transport mode dropdown when clicking outside
+  useEffect(() => {
+    if (!changingTransportMode) return;
+
+    const handleClickOutside = () => {
+      setChangingTransportMode(null);
+    };
+
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, [changingTransportMode]);
 
   // Auto-save to Firestore whenever data changes
   useEffect(() => {
@@ -1244,7 +1298,7 @@ const parseLocalDate = (value) => {
           
           {/* ITINERARY TAB */}
           {activeTab === 'itinerary' && (
-            <div className={`grid gap-4 items-start ${showMapPanel ? 'lg:grid-cols-[3fr_2fr]' : 'lg:grid-cols-1'}`}>
+            <div className={`grid gap-4 items-start ${showMapPanel ? 'grid-cols-1 lg:grid-cols-[60%_40%]' : 'grid-cols-1'}`}>
               <div className="space-y-6">
                 <div className="flex items-center justify-between flex-wrap gap-3">
                   <div>
@@ -1386,105 +1440,86 @@ const parseLocalDate = (value) => {
                   </div>
 
                   {/* Places List */}
-                  <div className="space-y-4">
+                  <div className="space-y-3">
                     {selectedDayData.places.map((place, index) => (
-                      <div 
-                        key={place.id} 
-                        className={`border rounded-lg overflow-hidden transition-all ${
-                          place.visited ? 'bg-gray-50 border-gray-300' : 'hover:shadow-md'
-                        }`}
-                      >
-                        {/* Place Header - Always Visible */}
-                        <div 
-                          className="p-3 sm:p-4 cursor-pointer"
-                          onClick={() => toggleVisited(selectedDay, place.id)}
-                        >
-                          <div className="flex items-start gap-3">
-                            {/* Checkbox */}
-                            <div className={`flex-shrink-0 w-6 h-6 sm:w-7 sm:h-7 rounded-full border-2 flex items-center justify-center mt-1 transition-all ${
-                              place.visited
-                                ? 'bg-[#26DE81] border-[#26DE81]'
-                                : 'border-gray-300 hover:border-[#FF6B6B]'
-                            }`}>
-                              {place.visited && (
-                                <svg className="w-4 h-4 text-white" fill="none" strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path d="M5 13l4 4L19 7"></path>
-                                </svg>
-                              )}
-                            </div>
-
-                            {/* Place Info */}
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 mb-1 flex-wrap">
-                                <span className="bg-gradient-to-r from-[#FF6B6B]/10 to-[#FFE66D]/10 text-[#FF6B6B] px-2 py-1 rounded-full text-xs sm:text-sm font-medium">
-                                  #{index + 1}
-                                </span>
-                                <h4 className={`font-bold text-base sm:text-lg ${place.visited ? 'line-through text-[#A1A1A1]' : ''}`}>
-                                  {place.name}
-                                </h4>
-                              </div>
-                              {!place.visited && (
-                                <>
-                                  <p className="text-[#A1A1A1] text-sm mb-1">{place.address}</p>
-                                  {place.notes && (
-                                    <p className="text-[#A1A1A1] text-sm italic">{place.notes}</p>
-                                  )}
-                                </>
-                              )}
-                              {place.visited && (
-                                <p className="text-[#A1A1A1] text-sm">✓ Visited</p>
-                              )}
-                            </div>
-
-                            {/* Action Buttons - Only show when not visited */}
-                            {!place.visited && (
-                              <div className="flex gap-1 sm:gap-2 flex-shrink-0">
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    openInGoogleMaps(place.address);
-                                  }}
-                                  className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"
-                                  title="Open in Google Maps"
-                                >
-                                  <MapIcon size={18} />
-                                </button>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleDeletePlace(selectedDay, place.id);
-                                  }}
-                                  className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
-                                >
-                                  <Trash2 size={18} />
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Transportation Info - Only show when not visited */}
+                      <React.Fragment key={place.id}>
+                        {/* Transportation Info - Between places */}
                         {!place.visited && index > 0 && (
-                          <div className="px-3 sm:px-4 pb-3 sm:pb-4">
-                            <div className="bg-gradient-to-r from-[#4ECDC4]/10 to-[#4ECDC4]/5 p-2 sm:p-3 rounded-lg">
-                              <div className="flex flex-wrap items-center gap-2 sm:gap-4 text-xs sm:text-sm">
-                                <div className="flex items-center gap-2">
-                                  {place.transportMode === 'walking' && <Navigation size={16} className="text-[#4ECDC4]" />}
-                                  {place.transportMode === 'metro' && <Train size={16} className="text-[#4ECDC4]" />}
-                                  <span className="font-medium capitalize">{place.transportMode}</span>
+                          <div className="flex items-center justify-center py-2">
+                            <div className="bg-gradient-to-r from-[#4ECDC4]/10 to-[#4ECDC4]/5 px-4 py-2.5 rounded-lg border border-[#4ECDC4]/20">
+                              <div className="flex flex-wrap items-center justify-center gap-3 text-xs sm:text-sm">
+                                {/* Transport Mode Icon - Clickable */}
+                                <div className="relative">
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setChangingTransportMode(
+                                        changingTransportMode?.dayId === selectedDay && changingTransportMode?.placeId === place.id
+                                          ? null
+                                          : { dayId: selectedDay, placeId: place.id }
+                                      );
+                                    }}
+                                    className="flex items-center gap-2 bg-white px-2 py-1 rounded-md shadow-sm hover:shadow-md hover:bg-gray-50 transition-all cursor-pointer"
+                                  >
+                                    {place.transportMode === 'walking' && <Navigation size={18} className="text-[#4ECDC4]" />}
+                                    {place.transportMode === 'car' && <Car size={18} className="text-[#4ECDC4]" />}
+                                    {place.transportMode === 'bus' && <Bus size={18} className="text-[#4ECDC4]" />}
+                                    {place.transportMode === 'metro' && <Train size={18} className="text-[#4ECDC4]" />}
+                                    {place.transportMode === 'train' && <Train size={18} className="text-[#4ECDC4]" />}
+                                    {place.transportMode === 'other' && <MapPin size={18} className="text-[#4ECDC4]" />}
+                                    <span className="font-semibold capitalize text-gray-700">{place.transportMode}</span>
+                                    <ChevronDown size={14} className="text-gray-400" />
+                                  </button>
+
+                                  {/* Dropdown Menu */}
+                                  {changingTransportMode?.dayId === selectedDay && changingTransportMode?.placeId === place.id && (
+                                    <div className="absolute top-full left-0 mt-1 bg-white rounded-lg shadow-lg border border-gray-200 z-10 min-w-[140px]">
+                                      {['walking', 'car', 'metro'].map(mode => (
+                                        <button
+                                          key={mode}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleChangeTransportMode(selectedDay, place.id, mode);
+                                          }}
+                                          className={`w-full flex items-center gap-2 px-3 py-2 hover:bg-gray-50 transition-colors ${
+                                            place.transportMode === mode ? 'bg-[#4ECDC4]/10' : ''
+                                          } ${mode === 'walking' ? 'rounded-t-lg' : ''} ${mode === 'metro' ? 'rounded-b-lg' : ''}`}
+                                        >
+                                          {mode === 'walking' && <Navigation size={16} className="text-[#4ECDC4]" />}
+                                          {mode === 'car' && <Car size={16} className="text-[#4ECDC4]" />}
+                                          {mode === 'metro' && <Train size={16} className="text-[#4ECDC4]" />}
+                                          <span className="capitalize text-sm font-medium text-gray-700">{mode}</span>
+                                        </button>
+                                      ))}
+                                    </div>
+                                  )}
                                 </div>
-                                {place.transportTime && (
-                                  <span className="text-gray-700">{place.transportTime} min</span>
-                                )}
+
+                                {/* Distance */}
                                 {place.distance && (
-                                  <span className="text-gray-700">{place.distance} km</span>
+                                  <div className="flex items-center gap-1 bg-white px-2 py-1 rounded-md shadow-sm">
+                                    <span className="font-bold text-[#4ECDC4]">{place.distance}</span>
+                                    <span className="text-gray-600 text-xs">km</span>
+                                  </div>
                                 )}
+
+                                {/* Time */}
+                                {place.transportTime && (
+                                  <div className="flex items-center gap-1 bg-white px-2 py-1 rounded-md shadow-sm">
+                                    <span className="font-bold text-[#4ECDC4]">{place.transportTime}</span>
+                                    <span className="text-gray-600 text-xs">min</span>
+                                  </div>
+                                )}
+
+                                {/* Metro Details */}
                                 {place.transportMode === 'metro' && place.metroStation && (
                                   <span className="text-gray-700 flex-1 min-w-0 truncate">
                                     {place.metroStation}
                                     {place.metroLine && ` (${place.metroLine})`}
                                   </span>
                                 )}
+
+                                {/* Get Directions Button */}
                                 {index > 0 && selectedDayData.places[index - 1] && (
                                   <button
                                     onClick={(e) => {
@@ -1494,18 +1529,93 @@ const parseLocalDate = (value) => {
                                         place.address
                                       );
                                     }}
-                                    className="text-[#4ECDC4] hover:underline flex items-center gap-1 whitespace-nowrap"
+                                    className="text-[#4ECDC4] hover:underline flex items-center gap-1 whitespace-nowrap font-medium"
                                   >
                                     <MapIcon size={14} />
-                                    <span className="hidden sm:inline">Get Directions</span>
-                                    <span className="sm:hidden">Route</span>
+                                    <span className="hidden sm:inline">Directions</span>
                                   </button>
                                 )}
                               </div>
                             </div>
                           </div>
                         )}
-                      </div>
+
+                        {/* Place Card */}
+                        <div
+                          className={`border rounded-lg overflow-hidden transition-all ${
+                            place.visited ? 'bg-gray-50 border-gray-300' : 'hover:shadow-md'
+                          }`}
+                        >
+                          {/* Place Header - Always Visible */}
+                          <div
+                            className="p-3 sm:p-4 cursor-pointer"
+                            onClick={() => toggleVisited(selectedDay, place.id)}
+                          >
+                            <div className="flex items-start gap-3">
+                              {/* Checkbox */}
+                              <div className={`flex-shrink-0 w-6 h-6 sm:w-7 sm:h-7 rounded-full border-2 flex items-center justify-center mt-1 transition-all ${
+                                place.visited
+                                  ? 'bg-[#26DE81] border-[#26DE81]'
+                                  : 'border-gray-300 hover:border-[#FF6B6B]'
+                              }`}>
+                                {place.visited && (
+                                  <svg className="w-4 h-4 text-white" fill="none" strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path d="M5 13l4 4L19 7"></path>
+                                  </svg>
+                                )}
+                              </div>
+
+                              {/* Place Info */}
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 mb-1 flex-wrap">
+                                  <span className="bg-gradient-to-r from-[#FF6B6B]/10 to-[#FFE66D]/10 text-[#FF6B6B] px-2 py-1 rounded-full text-xs sm:text-sm font-medium">
+                                    #{index + 1}
+                                  </span>
+                                  <h4 className={`font-bold text-base sm:text-lg ${place.visited ? 'line-through text-[#A1A1A1]' : ''}`}>
+                                    {place.name}
+                                  </h4>
+                                </div>
+                                {!place.visited && (
+                                  <>
+                                    <p className="text-[#A1A1A1] text-sm mb-1">{place.address}</p>
+                                    {place.notes && (
+                                      <p className="text-[#A1A1A1] text-sm italic">{place.notes}</p>
+                                    )}
+                                  </>
+                                )}
+                                {place.visited && (
+                                  <p className="text-[#A1A1A1] text-sm">✓ Visited</p>
+                                )}
+                              </div>
+
+                              {/* Action Buttons - Only show when not visited */}
+                              {!place.visited && (
+                                <div className="flex gap-1 sm:gap-2 flex-shrink-0">
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      openInGoogleMaps(place.address);
+                                    }}
+                                    className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"
+                                    title="Open in Google Maps"
+                                  >
+                                    <MapIcon size={18} />
+                                  </button>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleDeletePlace(selectedDay, place.id);
+                                    }}
+                                    className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
+                                  >
+                                    <Trash2 size={18} />
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </React.Fragment>
                     ))}
                   </div>
 
@@ -1655,7 +1765,7 @@ const parseLocalDate = (value) => {
             </div>
 
             {showMapPanel && (
-              <div className="bg-white border rounded-2xl shadow-md p-3 sm:p-4 lg:sticky lg:top-4 space-y-3">
+              <div className="bg-white border rounded-2xl shadow-md p-3 sm:p-4 space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <MapIcon size={18} className="text-[#4ECDC4]" />
@@ -1697,10 +1807,17 @@ const parseLocalDate = (value) => {
                       Mapping your stops...
                     </div>
                   )}
-                  {mapsReady && !selectedDayData?.places?.length && !mapLoading && (
-                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                      <div className="p-4 text-sm text-gray-500 bg-white/90 rounded-lg border border-dashed backdrop-blur-sm">
+                  {mapsReady && !selectedDayData?.places?.length && !mapLoading && !mapPlaceholderDismissed && (
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <div className="relative p-4 text-sm text-gray-500 bg-white/90 rounded-lg border border-dashed backdrop-blur-sm pointer-events-auto">
                         Add places to this day to see pins here.
+                        <button
+                          onClick={() => setMapPlaceholderDismissed(true)}
+                          className="absolute -top-2 -right-2 p-1 bg-white rounded-full shadow-md hover:bg-gray-100 transition-colors"
+                          title="Dismiss"
+                        >
+                          <X size={14} className="text-gray-600" />
+                        </button>
                       </div>
                     </div>
                   )}
