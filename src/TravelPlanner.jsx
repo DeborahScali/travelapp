@@ -3,7 +3,7 @@ import { DateRange } from 'react-date-range';
 import 'react-date-range/dist/styles.css';
 import 'react-date-range/dist/theme/default.css';
 import { Plus, Trash2, MapPin, Plane, DollarSign, TrendingUp, Calendar, Map as MapIcon, LogOut, User, ArrowLeft, X, ChevronDown, Coffee, StickyNote, Camera, Building } from 'lucide-react';
-import { FaWalking, FaSubway, FaCar, FaUtensils, FaMapMarkerAlt } from 'react-icons/fa';
+import { FaWalking, FaSubway, FaCar, FaUtensils, FaMapMarkerAlt, FaMapMarkedAlt } from 'react-icons/fa';
 import { TbTimeDuration30 } from 'react-icons/tb';
 import { MdAttachMoney, MdDragIndicator } from 'react-icons/md';
 import { IoIosAddCircle } from 'react-icons/io';
@@ -1748,15 +1748,13 @@ const parseLocalDate = (value) => {
             <div className={`grid gap-4 items-start ${showMapPanel ? 'grid-cols-1 lg:grid-cols-[60%_40%]' : 'grid-cols-1'}`}>
               <div className="space-y-6">
                 <div className="flex items-center justify-between flex-wrap gap-3">
-                  <div>
-                    <div className="text-sm font-semibold text-gray-700">Plan your days</div>
-                    <p className="text-xs text-gray-500">New stops appear on the map to the right.</p>
-                  </div>
+                  <h2 className="text-base font-semibold text-gray-700">Itinerary</h2>
                   <button
                     onClick={() => setShowMapPanel(prev => !prev)}
-                    className="px-3 py-2 text-sm font-semibold rounded-lg border border-gray-200 hover:border-[#4ECDC4] hover:text-[#4ECDC4] transition-colors"
+                    className="p-2 text-gray-600 hover:text-[#4ECDC4] transition-colors"
+                    title={showMapPanel ? 'Hide Map' : 'Show Map'}
                   >
-                    {showMapPanel ? 'Hide Map' : 'Show Map'}
+                    <FaMapMarkedAlt size={20} />
                   </button>
                 </div>
 
