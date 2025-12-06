@@ -4,6 +4,7 @@ import 'react-date-range/dist/styles.css';
 import 'react-date-range/dist/theme/default.css';
 import { Plus, Trash2, MapPin, Plane, DollarSign, TrendingUp, Calendar, Map as MapIcon, LogOut, User, ArrowLeft, X, ChevronDown, Coffee, StickyNote, Camera, Building } from 'lucide-react';
 import { FaWalking, FaSubway, FaCar, FaUtensils, FaMapMarkerAlt, FaMapMarkedAlt } from 'react-icons/fa';
+import { FaStar } from 'react-icons/fa6';
 import { TbTimeDuration30 } from 'react-icons/tb';
 import { MdAttachMoney, MdDragIndicator } from 'react-icons/md';
 import { IoIosAddCircle } from 'react-icons/io';
@@ -359,6 +360,7 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {} }) => {
     transportMode: 'walking',
     transportTime: '',
     distance: '',
+    priority: 0,
     metroStation: '',
     metroLine: '',
     visited: false
@@ -458,6 +460,7 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {} }) => {
       location: null,
       notes: '',
       transportMode: 'walking',
+      priority: 0,
       transportTime: '',
       distance: '',
       metroStation: '',
@@ -591,6 +594,22 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {} }) => {
       );
       setDailyPlans(recalculatedPlans);
     }
+  };
+
+  const handleChangePriority = (dayId, placeId, newPriority) => {
+    const updatedPlans = dailyPlans.map(day => {
+      if (day.id === dayId) {
+        const updatedPlaces = day.places.map(place => {
+          if (place.id === placeId) {
+            return { ...place, priority: newPriority };
+          }
+          return place;
+        });
+        return { ...day, places: updatedPlaces };
+      }
+      return day;
+    });
+    setDailyPlans(updatedPlans);
   };
 
   const handleChangeTransportMode = async (dayId, placeId, newMode) => {
@@ -1759,20 +1778,20 @@ const parseLocalDate = (value) => {
                 </div>
 
                 {/* Day Selector */}
-                <div className="flex items-center gap-4 overflow-x-auto pb-4">
+                <div className="flex items-center gap-2 overflow-x-auto pb-3">
                     {dailyPlans.map((day, index) => {
                     return (
                       <button
                         key={day.id}
                         onClick={() => setSelectedDay(day.id)}
-                        className={`flex-shrink-0 px-4 py-3 rounded-xl border-2 transition-all ${
+                        className={`flex-shrink-0 px-3 py-2 rounded-lg border transition-all ${
                           selectedDay === day.id
-                            ? 'border-[#FF6B6B] bg-gradient-to-br from-[#FF6B6B]/10 to-[#FFE66D]/10 text-[#FF6B6B] shadow-md'
-                            : 'border-gray-200 hover:border-[#FF6B6B]/50 hover:shadow-sm'
+                            ? 'border-[#FF6B6B] bg-gradient-to-br from-[#FF6B6B]/10 to-[#FFE66D]/10 text-[#FF6B6B] shadow-sm'
+                            : 'border-gray-200 hover:border-[#FF6B6B]/40 hover:bg-gray-50'
                         }`}
                       >
-                        <div className="font-medium">{parseLocalDate(day.date).toLocaleDateString('en-US', { weekday: 'short' })}</div>
-                        <div className="text-sm">{parseLocalDate(day.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
+                        <div className="text-xs font-medium">{parseLocalDate(day.date).toLocaleDateString('en-US', { weekday: 'short' })}</div>
+                        <div className="text-xs text-gray-600">{parseLocalDate(day.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
                       </button>
                     );
                   })}
@@ -2181,7 +2200,8 @@ const parseLocalDate = (value) => {
                                           visited: false,
                                           transportMode: 'walking',
                                           transportTime: '',
-                                          distance: ''
+                                          distance: '',
+                                          priority: 0
                                         };
                                         const updatedPlans = dailyPlans.map(day => {
                                           if (day.id === selectedDay) {
@@ -2275,6 +2295,28 @@ const parseLocalDate = (value) => {
                                   <h4 className="font-bold text-base sm:text-lg">
                                     {place.name}
                                   </h4>
+
+                                  {/* Priority Stars */}
+                                  <div className="flex items-center gap-0.5">
+                                    {[1, 2, 3, 4, 5].map((star) => {
+                                      const currentPriority = place.priority || 0;
+                                      const isActive = star <= currentPriority;
+
+                                      return (
+                                        <button
+                                          key={star}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleChangePriority(selectedDay, place.id, star);
+                                          }}
+                                          className="transition-all hover:scale-110"
+                                          title={`Priority: ${star}/5`}
+                                        >
+                                          <FaStar className={isActive ? 'text-yellow-500' : 'text-gray-300'} size={16} />
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
                                 </div>
 
                                 {/* Rich Text Notes Input */}
