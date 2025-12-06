@@ -3,10 +3,10 @@ import { DateRange } from 'react-date-range';
 import 'react-date-range/dist/styles.css';
 import 'react-date-range/dist/theme/default.css';
 import { Plus, Trash2, MapPin, Plane, DollarSign, TrendingUp, Calendar, Map as MapIcon, LogOut, User, ArrowLeft, X, ChevronDown, Coffee, StickyNote, Camera, Building } from 'lucide-react';
-import { FaWalking, FaSubway, FaCar, FaUtensils } from 'react-icons/fa';
+import { FaWalking, FaSubway, FaCar, FaUtensils, FaMapMarkerAlt } from 'react-icons/fa';
 import { TbTimeDuration30 } from 'react-icons/tb';
 import { MdAttachMoney } from 'react-icons/md';
-import { IoAddCircleOutline } from 'react-icons/io5';
+import { IoIosAddCircle } from 'react-icons/io';
 import { useAuth } from './contexts/AuthContext';
 import { useTrips, useCurrentTrip, useFlights, useDailyPlans, useExpenses } from './hooks/useFirestore';
 
@@ -88,6 +88,7 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {} }) => {
   const [placeSearchLoading, setPlaceSearchLoading] = useState(false);
   const [draggedItem, setDraggedItem] = useState(null); // Store dragged place info
   const [insertingAtIndex, setInsertingAtIndex] = useState(null); // Track where to insert new place
+  const [daySummaries, setDaySummaries] = useState({}); // Debounced summaries per day
   const [citySearchTerm, setCitySearchTerm] = useState('');
   const [countrySearchTerm, setCountrySearchTerm] = useState('');
   const [showCitySuggestions, setShowCitySuggestions] = useState(false);
@@ -107,6 +108,8 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {} }) => {
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showAccountSettings, setShowAccountSettings] = useState(false);
   const userMenuRef = useRef(null);
+  const addMenuRef = useRef(null);
+  const insertMenuRef = useRef(null);
   const [editingDayTitle, setEditingDayTitle] = useState(false);
   const [dayTitleValue, setDayTitleValue] = useState('');
   const [tripForm, setTripForm] = useState({
@@ -153,6 +156,98 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {} }) => {
       setGoogleMapsApiKey(envApiKey);
     }
   }, [googleMapsApiKey]);
+
+  // Close add menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (addMenuRef.current && !addMenuRef.current.contains(event.target)) {
+        setShowAddMenu(false);
+      }
+    };
+
+    if (showAddMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showAddMenu]);
+
+  // Close insert menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (insertMenuRef.current && !insertMenuRef.current.contains(event.target)) {
+        setInsertingAtIndex(null);
+      }
+    };
+
+    if (insertingAtIndex !== null) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [insertingAtIndex]);
+
+  // Initialize day summaries immediately when day is selected
+  useEffect(() => {
+    if (selectedDay && selectedDayData && !daySummaries[selectedDay]) {
+      const totalStops = selectedDayData.places?.length || 0;
+      const totalDistance = selectedDayData.places?.reduce((sum, p) => sum + parseFloat(p.distance || 0), 0) || 0;
+      const totalTime = selectedDayData.places?.reduce((sum, p) => sum + parseFloat(p.transportTime || 0), 0) || 0;
+      const totalCost = expenses.filter(e => e.dayId === selectedDay).reduce((sum, e) => sum + parseFloat(e.amount || 0), 0) || 0;
+
+      setDaySummaries(prev => ({
+        ...prev,
+        [selectedDay]: {
+          totalStops,
+          totalDistance,
+          totalTime,
+          totalCost
+        }
+      }));
+    }
+  }, [selectedDay, selectedDayData, daySummaries, expenses]);
+
+  // Immediate update of cost when expenses change
+  useEffect(() => {
+    if (selectedDay && daySummaries[selectedDay]) {
+      const totalCost = expenses.filter(e => e.dayId === selectedDay).reduce((sum, e) => sum + parseFloat(e.amount || 0), 0) || 0;
+
+      setDaySummaries(prev => ({
+        ...prev,
+        [selectedDay]: {
+          ...prev[selectedDay],
+          totalCost
+        }
+      }));
+    }
+  }, [expenses, selectedDay, daySummaries]);
+
+  // Debounced update of day summaries for places (3 seconds after changes)
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      if (selectedDay && selectedDayData) {
+        const totalStops = selectedDayData.places?.length || 0;
+        const totalDistance = selectedDayData.places?.reduce((sum, p) => sum + parseFloat(p.distance || 0), 0) || 0;
+        const totalTime = selectedDayData.places?.reduce((sum, p) => sum + parseFloat(p.transportTime || 0), 0) || 0;
+
+        setDaySummaries(prev => ({
+          ...prev,
+          [selectedDay]: {
+            ...prev[selectedDay],
+            totalStops,
+            totalDistance,
+            totalTime
+          }
+        }));
+      }
+    }, 3000);
+
+    return () => clearTimeout(timeoutId);
+  }, [selectedDay, selectedDayData, selectedDayData?.places]);
 
   // Generate daily plans when trip is created
   useEffect(() => {
@@ -1639,9 +1734,37 @@ const parseLocalDate = (value) => {
                 <div>
                   {/* Day Info */}
                   <div className="mb-6 p-4 bg-gray-50 rounded-lg">
-                    <h3 className="text-xl font-bold mb-3">
-                      {parseLocalDate(selectedDayData.date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-                    </h3>
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="text-xl font-bold">
+                        {parseLocalDate(selectedDayData.date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                      </h3>
+
+                      {/* Smart Summaries */}
+                      <div className="flex items-center gap-4 text-sm text-gray-600">
+                        <div className="flex items-center gap-1" title="Total stops">
+                          <FaMapMarkerAlt className="text-[#FF6B6B]" size={14} />
+                          <span className="font-medium">{daySummaries[selectedDay]?.totalStops ?? 0}</span>
+                        </div>
+                        <div className="flex items-center gap-1" title="Total walking distance">
+                          <span>🚶</span>
+                          <span className="font-medium">
+                            {(daySummaries[selectedDay]?.totalDistance ?? 0).toFixed(1)} km
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1" title="Estimated total time">
+                          <span>⏱</span>
+                          <span className="font-medium">
+                            {daySummaries[selectedDay]?.totalTime ?? 0} min
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1" title="Expected daily cost">
+                          <span>💶</span>
+                          <span className="font-medium">
+                            €{(daySummaries[selectedDay]?.totalCost ?? 0).toFixed(2)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
                     
                     {/* Day Title - Inline Edit */}
                     <div className="mb-4">
@@ -1754,10 +1877,10 @@ const parseLocalDate = (value) => {
                                 e.stopPropagation();
                                 setInsertingAtIndex(insertingAtIndex === index ? null : index);
                               }}
-                              className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#4ECDC4]/5 hover:bg-[#4ECDC4]/10 border border-[#4ECDC4]/20 hover:border-[#4ECDC4]/40 transition-all cursor-pointer text-xs"
+                              className="text-teal-500 hover:text-teal-600 transition-colors cursor-pointer"
                               title="Add place here"
                             >
-                              <IoAddCircleOutline size={16} className="text-[#4ECDC4]" />
+                              <IoIosAddCircle size={20} />
                             </button>
 
                             <div className="relative">
@@ -1904,7 +2027,7 @@ const parseLocalDate = (value) => {
 
                         {/* Dropdown Menu and Form for Insert (between places) */}
                         {index > 0 && insertingAtIndex === index && (
-                          <div className="my-2">
+                          <div className="my-2" ref={insertMenuRef}>
                             {!selectedAddType && (
                               <div className="absolute z-20 w-64 bg-white rounded-xl shadow-xl border-2 border-gray-200 overflow-hidden">
                                 <button
@@ -2511,13 +2634,13 @@ const parseLocalDate = (value) => {
                   <div className="mt-4">
                     {!selectedAddType ? (
                       /* Step 1: Show + button and menu */
-                      <div className="relative">
+                      <div className="relative" ref={addMenuRef}>
                         <button
                           onClick={() => setShowAddMenu(!showAddMenu)}
-                          className="w-full px-4 py-3 bg-gradient-to-r from-[#4ECDC4] to-[#3db8b0] text-white rounded-xl hover:shadow-lg transition-all flex items-center justify-center"
+                          className="w-full flex items-center justify-center text-teal-500 hover:text-teal-600 transition-colors cursor-pointer"
                           title="Add to This Day"
                         >
-                          <IoAddCircleOutline size={28} />
+                          <IoIosAddCircle size={28} />
                         </button>
 
                         {/* Dropdown Menu */}
