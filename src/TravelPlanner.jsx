@@ -5,7 +5,7 @@ import 'react-date-range/dist/theme/default.css';
 import { Plus, Trash2, MapPin, Plane, DollarSign, TrendingUp, Calendar, Map as MapIcon, LogOut, User, ArrowLeft, X, ChevronDown, Coffee, StickyNote, Camera, Building } from 'lucide-react';
 import { FaWalking, FaSubway, FaCar, FaUtensils, FaMapMarkerAlt } from 'react-icons/fa';
 import { TbTimeDuration30 } from 'react-icons/tb';
-import { MdAttachMoney } from 'react-icons/md';
+import { MdAttachMoney, MdDragIndicator } from 'react-icons/md';
 import { IoIosAddCircle } from 'react-icons/io';
 import { useAuth } from './contexts/AuthContext';
 import { useTrips, useCurrentTrip, useFlights, useDailyPlans, useExpenses } from './hooks/useFirestore';
@@ -87,6 +87,7 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {} }) => {
   const [placeSuggestions, setPlaceSuggestions] = useState([]);
   const [placeSearchLoading, setPlaceSearchLoading] = useState(false);
   const [draggedItem, setDraggedItem] = useState(null); // Store dragged place info
+  const [isDragging, setIsDragging] = useState(false); // Track if currently dragging
   const [insertingAtIndex, setInsertingAtIndex] = useState(null); // Track where to insert new place
   const [daySummaries, setDaySummaries] = useState({}); // Debounced summaries per day
   const [citySearchTerm, setCitySearchTerm] = useState('');
@@ -506,7 +507,9 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {} }) => {
 
   const handleDragStart = (e, dayId, placeId) => {
     setDraggedItem({ dayId, placeId });
+    setIsDragging(true);
     e.dataTransfer.effectAllowed = 'move';
+    e.stopPropagation();
   };
 
   const handleDragOver = (e) => {
@@ -514,12 +517,18 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {} }) => {
     e.dataTransfer.dropEffect = 'move';
   };
 
-  const handleDrop = (e, dayId, targetPlaceId) => {
+  const handleDragEnd = () => {
+    setDraggedItem(null);
+    setTimeout(() => setIsDragging(false), 100);
+  };
+
+  const handleDrop = async (e, dayId, targetPlaceId) => {
     e.preventDefault();
     e.stopPropagation();
 
     if (!draggedItem || draggedItem.placeId === targetPlaceId) {
       setDraggedItem(null);
+      setTimeout(() => setIsDragging(false), 100);
       return;
     }
 
@@ -541,6 +550,47 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {} }) => {
 
     setDailyPlans(updatedPlans);
     setDraggedItem(null);
+    setTimeout(() => setIsDragging(false), 100);
+
+    // Recalculate distances between places after reordering
+    const dayToUpdate = updatedPlans.find(d => d.id === dayId);
+    if (dayToUpdate && dayToUpdate.places.length > 1) {
+      const recalculatedPlans = await Promise.all(
+        updatedPlans.map(async (day) => {
+          if (day.id === dayId) {
+            const updatedPlaces = await Promise.all(
+              day.places.map(async (place, index) => {
+                if (index === 0) {
+                  return place; // First place has no previous place
+                }
+                const prevPlace = day.places[index - 1];
+                if (prevPlace.coordinates && place.coordinates) {
+                  try {
+                    const distanceData = await calculateDistanceAndTime(
+                      prevPlace.coordinates,
+                      place.coordinates,
+                      place.transportMode || 'walking'
+                    );
+                    return {
+                      ...place,
+                      distance: distanceData.distance,
+                      transportTime: distanceData.time
+                    };
+                  } catch (error) {
+                    console.error('Error recalculating distance:', error);
+                    return place;
+                  }
+                }
+                return place;
+              })
+            );
+            return { ...day, places: updatedPlaces };
+          }
+          return day;
+        })
+      );
+      setDailyPlans(recalculatedPlans);
+    }
   };
 
   const handleChangeTransportMode = async (dayId, placeId, newMode) => {
@@ -2171,32 +2221,45 @@ const parseLocalDate = (value) => {
                           </div>
                         )}
 
-                        {/* Place Card */}
-                        <div
-                          draggable
-                          onDragStart={(e) => handleDragStart(e, selectedDay, place.id)}
-                          onDragOver={handleDragOver}
-                          onDrop={(e) => handleDrop(e, selectedDay, place.id)}
-                          onClick={() => {
-                            // Trigger the corresponding map marker
-                            const markerIndex = selectedDayData.places.findIndex(p => p.id === place.id);
-                            if (markerIndex !== -1 && markersRef.current[markerIndex]) {
-                              window.google.maps.event.trigger(markersRef.current[markerIndex], 'click');
-                              // Ensure map panel is visible
-                              if (!showMapPanel) {
-                                setShowMapPanel(true);
+                        {/* Place Card with Drag Indicator */}
+                        <div className="flex items-start gap-2 group">
+                          {/* Drag Indicator - Outside on the left */}
+                          {!place.visited && (
+                            <div className="flex-shrink-0 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <MdDragIndicator size={16} className="text-gray-400 cursor-grab active:cursor-grabbing" />
+                            </div>
+                          )}
+
+                          {/* Place Card */}
+                          <div
+                            draggable={!place.visited}
+                            onDragStart={(e) => handleDragStart(e, selectedDay, place.id)}
+                            onDragOver={handleDragOver}
+                            onDrop={(e) => handleDrop(e, selectedDay, place.id)}
+                            onDragEnd={handleDragEnd}
+                            onClick={() => {
+                              // Don't trigger click if we're dragging
+                              if (isDragging) return;
+
+                              // Trigger the corresponding map marker
+                              const markerIndex = selectedDayData.places.findIndex(p => p.id === place.id);
+                              if (markerIndex !== -1 && markersRef.current[markerIndex]) {
+                                window.google.maps.event.trigger(markersRef.current[markerIndex], 'click');
+                                // Ensure map panel is visible
+                                if (!showMapPanel) {
+                                  setShowMapPanel(true);
+                                }
                               }
-                            }
-                          }}
-                          className={`border rounded-lg overflow-hidden transition-all cursor-move ${
-                            place.visited ? 'bg-gray-50 border-gray-300' : 'hover:shadow-md'
-                          } ${draggedItem?.placeId === place.id ? 'opacity-50' : ''}`}
-                        >
-                          {/* Place Header */}
-                          <div className="p-3 sm:p-4">
-                            <div className="flex items-start gap-3">
-                              {/* Type Icon */}
-                              <div className="flex-shrink-0 mt-1">
+                            }}
+                            className={`flex-1 border rounded-lg overflow-hidden transition-all ${
+                              place.visited ? 'bg-gray-50 border-gray-300' : 'hover:shadow-md cursor-move'
+                            } ${draggedItem?.placeId === place.id ? 'opacity-50' : ''}`}
+                          >
+                            {/* Place Header */}
+                            <div className="p-3 sm:p-4">
+                              <div className="flex items-start gap-3">
+                                {/* Type Icon */}
+                                <div className="flex-shrink-0 mt-1">
                                 {place.type === 'place' && <div className="w-8 h-8 rounded-lg bg-blue-500 flex items-center justify-center"><Building size={16} className="text-white" /></div>}
                                 {place.type === 'restaurant' && <div className="w-8 h-8 rounded-lg bg-orange-500 flex items-center justify-center"><FaUtensils size={14} className="text-white" /></div>}
                                 {place.type === 'cafe' && <div className="w-8 h-8 rounded-lg bg-amber-600 flex items-center justify-center"><Coffee size={16} className="text-white" /></div>}
@@ -2625,6 +2688,7 @@ const parseLocalDate = (value) => {
                               )}
                             </div>
                           </div>
+                        </div>
                         </div>
                       </React.Fragment>
                     ))}
