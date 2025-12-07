@@ -139,6 +139,51 @@ const extractLocationFromPlace = (place = {}) => {
   return result;
 };
 
+const parseLocationFromAddress = (address = '') => {
+  const parts = String(address)
+    .split(',')
+    .map(p => p.trim())
+    .filter(Boolean);
+
+  // Heuristic: last is country, second last is state/region, third last is city
+  const len = parts.length;
+  return {
+    city: len >= 3 ? parts[len - 3] : '',
+    state: len >= 2 ? parts[len - 2] : '',
+    country: len >= 1 ? parts[len - 1] : ''
+  };
+};
+
+const derivePlaceLocation = (place = {}) => {
+  const parsed = parseLocationFromAddress(place.address || '');
+  return {
+    city: place.city || parsed.city || '',
+    state: place.state || parsed.state || '',
+    country: place.country || parsed.country || ''
+  };
+};
+
+const parseAddressComponents = (components = []) => {
+  const get = (types) => {
+    const comp = components.find(c => types.every(t => c.types?.includes(t)));
+    return comp?.longText || comp?.long_name || '';
+  };
+  const city = get(['locality']) || get(['postal_town']) || get(['administrative_area_level_2']);
+  const state = get(['administrative_area_level_1']);
+  const country = get(['country']);
+  return { city, state, country };
+};
+
+const normalizeDateKey = (value) => {
+  if (!value) return '';
+  const str = String(value);
+  // If already in YYYY-MM-DD format, keep it as-is
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+  const d = new Date(str);
+  if (Number.isNaN(d.getTime())) return str;
+  return formatDateLocal(d);
+};
+
 const CURRENCY_RATES_EUR = {
   EUR: 1,
   USD: 0.92,
@@ -569,6 +614,7 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
   const [flightImagePreview, setFlightImagePreview] = useState('');
   const [flightExtracting, setFlightExtracting] = useState(false);
   const [flightExtractError, setFlightExtractError] = useState('');
+  const [editingFlightId, setEditingFlightId] = useState(null);
   const [hotelInputMode, setHotelInputMode] = useState('manual');
   const [hotelDocPreview, setHotelDocPreview] = useState(null);
   const [hotelImagePreview, setHotelImagePreview] = useState('');
@@ -581,6 +627,9 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
     address: '',
     placeId: '',
     location: null,
+    city: '',
+    state: '',
+    country: '',
     photoUrl: '',
     notes: '',
     transportMode: 'walking',
@@ -782,38 +831,52 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
     setFlightExtractError('');
     setFlightExtracting(false);
     setFlightInputMode('manual');
+    setEditingFlightId(null);
   };
 
   const handleAddFlight = async () => {
-    const baseId = Date.now();
-    const outboundFlight = {
-      id: baseId,
-      ...flightForm,
-      date: flightForm.departureDate || flightForm.date || '',
-      groupId: flightForm.isRoundTrip ? baseId : null,
-      leg: 'outbound'
-    };
-    const returnFlight = flightForm.isRoundTrip && flightForm.returnDate
-      ? {
-          ...flightForm,
-          id: baseId + 1,
-          airline: flightForm.airline,
-          flightNumber: `${flightForm.flightNumber || ''}`.trim() ? `${flightForm.flightNumber}-R` : '',
-          from: flightForm.to,
-          to: flightForm.from,
-          departureDate: flightForm.returnDate,
-          arrivalDate: flightForm.returnDate,
-          date: flightForm.returnDate,
-          departureTime: flightForm.returnDepartureTime,
-          arrivalTime: flightForm.returnArrivalTime,
-          bookingRef: flightForm.bookingRef,
-          price: '',
-          priceCurrency: flightForm.priceCurrency,
-          groupId: baseId,
-          leg: 'return'
-        }
-      : null;
     try {
+      if (editingFlightId) {
+        const updatedFlight = {
+          id: editingFlightId,
+          ...flightForm,
+          date: flightForm.departureDate || flightForm.date || ''
+        };
+        await saveFlight(updatedFlight);
+        resetFlightCaptureState();
+        setShowAddFlight(false);
+        return;
+      }
+
+      const baseId = Date.now();
+      const outboundFlight = {
+        id: baseId,
+        ...flightForm,
+        date: flightForm.departureDate || flightForm.date || '',
+        groupId: flightForm.isRoundTrip ? baseId : null,
+        leg: 'outbound'
+      };
+      const returnFlight = flightForm.isRoundTrip && flightForm.returnDate
+        ? {
+            ...flightForm,
+            id: baseId + 1,
+            airline: flightForm.airline,
+            flightNumber: `${flightForm.flightNumber || ''}`.trim() ? `${flightForm.flightNumber}-R` : '',
+            from: flightForm.to,
+            to: flightForm.from,
+            departureDate: flightForm.returnDate,
+            arrivalDate: flightForm.returnDate,
+            date: flightForm.returnDate,
+            departureTime: flightForm.returnDepartureTime,
+            arrivalTime: flightForm.returnArrivalTime,
+            bookingRef: flightForm.bookingRef,
+            price: '',
+            priceCurrency: flightForm.priceCurrency,
+            groupId: baseId,
+            leg: 'return'
+          }
+        : null;
+
       await saveFlight(outboundFlight);
       if (returnFlight) {
         await saveFlight(returnFlight);
@@ -957,7 +1020,13 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
 
   const handleAddPlace = async () => {
     const selectedDayData = dailyPlans.find(d => d.id === selectedDay);
-    let finalPlaceForm = { ...placeForm };
+    const parsedLoc = parseLocationFromAddress(placeForm.address || '');
+    let finalPlaceForm = {
+      ...placeForm,
+      city: placeForm.city || parsedLoc.city || '',
+      state: placeForm.state || parsedLoc.state || '',
+      country: placeForm.country || parsedLoc.country || ''
+    };
 
     // If there's a previous place and we have an API key, calculate distance and time
     if (selectedDayData && selectedDayData.places.length > 0 && mapsApiKey) {
@@ -1012,6 +1081,9 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
       address: '',
       placeId: '',
       location: null,
+      city: '',
+      state: '',
+      country: '',
       photoUrl: '',
       notes: '',
       transportMode: 'walking',
@@ -1524,16 +1596,21 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
         });
 
         await place.fetchFields({
-          fields: ['displayName', 'formattedAddress', 'location', 'photos']
+          fields: ['displayName', 'formattedAddress', 'location', 'addressComponents', 'photos']
         });
 
         const photoUrl = getPhotoUrl(place.photos, 600);
+
+        const locParts = parseAddressComponents(place.addressComponents || []);
 
         placeData = {
           name: place.displayName || placeSearchTerm,
           address: place.formattedAddress || placeSearchTerm,
           placeId: suggestion.place_id,
           location: place.location ? { lat: place.location.lat(), lng: place.location.lng() } : null,
+          city: locParts.city || '',
+          state: locParts.state || '',
+          country: locParts.country || '',
           photoUrl: photoUrl || '',
           notes: '',
           transportMode: 'walking',
@@ -1548,7 +1625,7 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
         const service = new window.google.maps.places.PlacesService(document.createElement('div'));
         const result = await new Promise((resolve, reject) => {
           service.getDetails(
-            { placeId: suggestion.place_id, fields: ['name', 'formatted_address', 'geometry', 'photos'] },
+            { placeId: suggestion.place_id, fields: ['name', 'formatted_address', 'geometry', 'photos', 'address_component'] },
             (res, status) => {
               if (status === window.google.maps.places.PlacesServiceStatus.OK && res) {
                 resolve(res);
@@ -1560,6 +1637,11 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
         });
 
         const photoUrl = result.photos && result.photos.length > 0 ? result.photos[0].getUrl({ maxWidth: 600, maxHeight: 600 }) : '';
+        const legacyComponents = (result.address_components || []).map(c => ({
+          longText: c.long_name,
+          types: c.types || []
+        }));
+        const locParts = parseAddressComponents(legacyComponents);
 
         placeData = {
           name: result.name || placeSearchTerm,
@@ -1568,6 +1650,9 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
           location: result.geometry?.location
             ? { lat: result.geometry.location.lat(), lng: result.geometry.location.lng() }
             : null,
+          city: locParts.city || '',
+          state: locParts.state || '',
+          country: locParts.country || '',
           photoUrl,
           notes: '',
           transportMode: 'walking',
@@ -1634,19 +1719,22 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
       setDailyPlans(updatedPlans);
 
       // Reset form
-    setPlaceForm({
-      name: '',
-      address: '',
-      placeId: '',
-      location: null,
-      photoUrl: '',
-      notes: '',
-      transportMode: 'walking',
-      transportTime: '',
-      distance: '',
-      startTime: '',
-      endTime: ''
-    });
+      setPlaceForm({
+        name: '',
+        address: '',
+        placeId: '',
+        location: null,
+        city: '',
+        state: '',
+        country: '',
+        photoUrl: '',
+        notes: '',
+        transportMode: 'walking',
+        transportTime: '',
+        distance: '',
+        startTime: '',
+        endTime: ''
+      });
       setPlaceSearchTerm('');
       setPlaceSuggestions([]);
       setSelectedAddType(null); // Reset to show menu again
@@ -2337,17 +2425,12 @@ const renderExpenseIcon = (category, size = 14) => {
       }
     });
     dailyPlans.forEach(day => {
-      if (day.city) {
-        const dayPlaceTotal = day.places.reduce((sum, p) => sum + convertAmountToBase(parsePriceValue(p.cost), p.currency || 'EUR'), 0);
-        byCity[day.city] = (byCity[day.city] || 0) + dayPlaceTotal;
-      } else {
-        day.places.forEach(place => {
-          const loc = extractLocationFromPlace(place);
-          if (loc.city) {
-            byCity[loc.city] = (byCity[loc.city] || 0) + convertAmountToBase(parsePriceValue(place.cost), place.currency || 'EUR');
-          }
-        });
-      }
+      day.places.forEach(place => {
+        const loc = derivePlaceLocation(place);
+        if (loc.city) {
+          byCity[loc.city] = (byCity[loc.city] || 0) + convertAmountToBase(parsePriceValue(place.cost), place.currency || 'EUR');
+        }
+      });
     });
     hotels.forEach(hotel => {
       if (hotel.city) {
@@ -2365,17 +2448,12 @@ const renderExpenseIcon = (category, size = 14) => {
       }
     });
     dailyPlans.forEach(day => {
-      if (day.country) {
-        const dayPlaceTotal = day.places.reduce((sum, p) => sum + convertAmountToBase(parsePriceValue(p.cost), p.currency || 'EUR'), 0);
-        byCountry[day.country] = (byCountry[day.country] || 0) + dayPlaceTotal;
-      } else {
-        day.places.forEach(place => {
-          const loc = extractLocationFromPlace(place);
-          if (loc.country) {
-            byCountry[loc.country] = (byCountry[loc.country] || 0) + convertAmountToBase(parsePriceValue(place.cost), place.currency || 'EUR');
-          }
-        });
-      }
+      day.places.forEach(place => {
+        const loc = derivePlaceLocation(place);
+        if (loc.country) {
+          byCountry[loc.country] = (byCountry[loc.country] || 0) + convertAmountToBase(parsePriceValue(place.cost), place.currency || 'EUR');
+        }
+      });
     });
     hotels.forEach(hotel => {
       if (hotel.country) {
@@ -2412,67 +2490,66 @@ const renderExpenseIcon = (category, size = 14) => {
   const getExpensesByDay = () => {
     const byDay = {};
     expenses.forEach(exp => {
-      if (exp.date) {
-        byDay[exp.date] = (byDay[exp.date] || 0) + convertAmountToBase(parseFloat(exp.amount || 0), exp.currency || 'EUR');
+      const key = normalizeDateKey(exp.date);
+      if (key) {
+        byDay[key] = (byDay[key] || 0) + convertAmountToBase(parseFloat(exp.amount || 0), exp.currency || 'EUR');
       }
     });
     dailyPlans.forEach(day => {
       const dayTotal = day.places.reduce((sum, p) => sum + convertAmountToBase(parsePriceValue(p.cost), p.currency || 'EUR'), 0);
-      if (day.date) {
-        byDay[day.date] = (byDay[day.date] || 0) + dayTotal;
+      const key = normalizeDateKey(day.date);
+      if (key) {
+        byDay[key] = (byDay[key] || 0) + dayTotal;
       }
     });
     flights.forEach(flight => {
-      const d = flight.departureDate || flight.date;
+      const d = normalizeDateKey(flight.departureDate || flight.date);
       if (d) {
         byDay[d] = (byDay[d] || 0) + convertAmountToBase(parsePriceValue(flight.price), flight.priceCurrency || 'EUR');
       }
     });
     hotels.forEach(hotel => {
-      if (hotel.checkIn) {
-        byDay[hotel.checkIn] = (byDay[hotel.checkIn] || 0) + convertAmountToBase(parsePriceValue(hotel.price), hotel.priceCurrency || 'EUR');
+      const key = normalizeDateKey(hotel.checkIn);
+      if (key) {
+        byDay[key] = (byDay[key] || 0) + convertAmountToBase(parsePriceValue(hotel.price), hotel.priceCurrency || 'EUR');
       }
     });
     return byDay;
   };
 
-  const getExpensesByLocation = () => {
-    const byLocation = {};
+  const getTotalExpensesByState = () => {
+    const byState = {};
     expenses.forEach(exp => {
-      const city = exp.city || '';
-      const country = exp.country || '';
-      const labelParts = [city, country].filter(Boolean);
-      const label = labelParts.length ? labelParts.join(', ') : 'Unspecified';
-      byLocation[label] = (byLocation[label] || 0) + convertAmountToBase(parseFloat(exp.amount || 0), exp.currency || 'EUR');
+      if (exp.state) {
+        byState[exp.state] = (byState[exp.state] || 0) + convertAmountToBase(parseFloat(exp.amount || 0), exp.currency || 'EUR');
+      }
     });
     dailyPlans.forEach(day => {
       day.places.forEach(place => {
-        const loc = extractLocationFromPlace(place);
-        const city = loc.city || day.city || '';
-        const state = loc.state || '';
-        const country = loc.country || day.country || '';
-        const labelParts = [city, state, country].filter(Boolean);
-        const label = labelParts.length ? labelParts.join(', ') : 'Unspecified';
-        byLocation[label] = (byLocation[label] || 0) + convertAmountToBase(parsePriceValue(place.cost), place.currency || 'EUR');
+        const loc = derivePlaceLocation(place);
+        if (loc.state) {
+          byState[loc.state] = (byState[loc.state] || 0) + convertAmountToBase(parsePriceValue(place.cost), place.currency || 'EUR');
+        }
       });
     });
     hotels.forEach(hotel => {
-      const city = hotel.city || '';
-      const state = hotel.state || '';
-      const country = hotel.country || '';
-      const labelParts = [city, state, country].filter(Boolean);
-      const label = labelParts.length ? labelParts.join(', ') : 'Unspecified';
-      byLocation[label] = (byLocation[label] || 0) + convertAmountToBase(parsePriceValue(hotel.price), hotel.priceCurrency || 'EUR');
+      if (hotel.state) {
+        byState[hotel.state] = (byState[hotel.state] || 0) + convertAmountToBase(parsePriceValue(hotel.price), hotel.priceCurrency || 'EUR');
+      }
     });
-    return byLocation;
+    return byState;
   };
 
   const getExpenseSummaryData = (mode) => {
     switch (mode) {
       case 'day':
         return Object.entries(getExpensesByDay()).map(([label, value]) => ({ label, value }));
-      case 'location':
-        return Object.entries(getExpensesByLocation()).map(([label, value]) => ({ label, value }));
+      case 'city':
+        return Object.entries(getTotalExpensesByCity()).map(([label, value]) => ({ label, value }));
+      case 'state':
+        return Object.entries(getTotalExpensesByState()).map(([label, value]) => ({ label, value }));
+      case 'country':
+        return Object.entries(getTotalExpensesByCountry()).map(([label, value]) => ({ label, value }));
       case 'category':
       default:
         return Object.entries(getTotalExpensesByCategory()).map(([label, value]) => ({ label, value }));
@@ -2482,16 +2559,31 @@ const renderExpenseIcon = (category, size = 14) => {
   const renderExpenseBars = (mode) => {
     const data = getExpenseSummaryData(mode);
     if (!data.length) return null;
-    const max = Math.max(...data.map(d => d.value));
+    const sortedData = [...data].sort((a, b) => {
+      if (mode === 'day') {
+        const da = new Date(a.label);
+        const db = new Date(b.label);
+        if (!Number.isNaN(da.getTime()) && !Number.isNaN(db.getTime())) {
+          return da - db;
+        }
+        return String(a.label).localeCompare(String(b.label));
+      }
+      return b.value - a.value;
+    });
+    const max = Math.max(...sortedData.map(d => d.value));
     return (
       <div className="space-y-2">
-        {data
-          .sort((a, b) => b.value - a.value)
-          .map(({ label, value }) => {
+        {sortedData.map(({ label, value }) => {
             const width = max === 0 ? 0 : (value / max) * 100;
+            const labelText = (() => {
+              if (mode !== 'day') return label || 'Unspecified';
+              if (!label) return 'Unspecified';
+              const d = new Date(label);
+              return Number.isNaN(d.getTime()) ? label : d.toLocaleDateString();
+            })();
             return (
               <div key={`${mode}-${label}`} className="flex items-center gap-3">
-                <div className="w-32 text-sm text-gray-700 truncate">{label}</div>
+                <div className="w-32 text-sm text-gray-700 truncate">{labelText}</div>
                 <div className="flex-1 bg-gray-100 rounded-full h-2.5 overflow-hidden">
                   <div
                     className="h-full bg-gradient-to-r from-[#4ECDC4] to-[#44A08D]"
@@ -4392,10 +4484,13 @@ const renderExpenseIcon = (category, size = 14) => {
             <div className="space-y-4">
               <div className="flex justify-between items-center mb-4">
                 <h2 className="text-2xl font-bold">Flights</h2>
-                      <button
-                        onClick={() => setShowAddFlight(true)}
-                        className="px-4 py-2 bg-gradient-to-r from-[#4ECDC4] to-[#44A08D] text-white rounded-xl hover:shadow-lg transition-all hover:scale-[1.02] flex items-center gap-2 font-medium"
-                      >
+                <button
+                  onClick={() => {
+                    resetFlightCaptureState();
+                    setShowAddFlight(true);
+                  }}
+                  className="px-4 py-2 bg-gradient-to-r from-[#4ECDC4] to-[#44A08D] text-white rounded-xl hover:shadow-lg transition-all hover:scale-[1.02] flex items-center gap-2 font-medium"
+                >
                   <Plus size={20} />
                   Add Flight
                 </button>
@@ -4452,12 +4547,41 @@ const renderExpenseIcon = (category, size = 14) => {
                             )}
                           </div>
                         </div>
-                        <button
-                          onClick={() => handleDeleteFlight(flight.id)}
-                          className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
-                        >
-                          <Trash2 size={18} />
-                        </button>
+                        <div className="flex flex-col gap-2">
+                          <button
+                            onClick={() => {
+                              setFlightForm({
+                                airline: flight.airline || '',
+                                flightNumber: flight.flightNumber || '',
+                                from: flight.from || '',
+                                to: flight.to || '',
+                                departureDate: flight.departureDate || flight.date || '',
+                                arrivalDate: flight.arrivalDate || '',
+                                date: flight.date || '',
+                                departureTime: flight.departureTime || '',
+                                arrivalTime: flight.arrivalTime || '',
+                                bookingRef: flight.bookingRef || '',
+                                price: flight.price || '',
+                                priceCurrency: flight.priceCurrency || 'USD',
+                                isRoundTrip: false,
+                                returnDate: '',
+                                returnDepartureTime: '',
+                                returnArrivalTime: ''
+                              });
+                              setEditingFlightId(flight.id);
+                              setShowAddFlight(true);
+                            }}
+                            className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"
+                          >
+                            <Edit3 size={18} />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteFlight(flight.id)}
+                            className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
+                          >
+                            <Trash2 size={18} />
+                          </button>
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -4471,7 +4595,7 @@ const renderExpenseIcon = (category, size = 14) => {
                     <div className="flex items-start justify-between gap-3 mb-3">
                       <div>
                         <p className="text-xs uppercase tracking-[0.12em] text-[#1B7F79] font-semibold">Flights</p>
-                        <h3 className="text-xl sm:text-2xl font-bold text-gray-900">Add Flight</h3>
+                        <h3 className="text-xl sm:text-2xl font-bold text-gray-900">{editingFlightId ? 'Edit Flight' : 'Add Flight'}</h3>
                       </div>
                       <button
                         onClick={() => {
@@ -4694,7 +4818,7 @@ const renderExpenseIcon = (category, size = 14) => {
                           disabled={!flightForm.airline || !flightForm.flightNumber || !flightForm.from || !flightForm.to}
                           className="flex-1 px-4 py-3 bg-gradient-to-r from-[#4ECDC4] to-[#44A08D] text-white rounded-xl hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm sm:text-base font-semibold"
                         >
-                          Save Flight
+                          {editingFlightId ? 'Update Flight' : 'Save Flight'}
                         </button>
                         <button
                           onClick={() => {
@@ -4758,7 +4882,9 @@ const renderExpenseIcon = (category, size = 14) => {
                     {[
                       { key: 'category', label: 'By category' },
                       { key: 'day', label: 'By day' },
-                      { key: 'location', label: 'By location' }
+                      { key: 'city', label: 'By city' },
+                      { key: 'state', label: 'By state' },
+                      { key: 'country', label: 'By country' }
                     ].map(opt => (
                       <button
                         key={opt.key}
@@ -4863,16 +4989,16 @@ const renderExpenseIcon = (category, size = 14) => {
                           .map(place => {
                             const amount = parsePriceValue(place.cost);
                             if (!amount) return null;
-                            const loc = extractLocationFromPlace(place);
+                            const loc = derivePlaceLocation(place);
                             return {
                               id: `place-${day.id}-${place.id}`,
                               description: place.name || 'Place cost',
                               amount,
                               currency: place.currency || 'EUR',
                               date: day.date,
-                              city: loc.city || day.city,
-                              country: loc.country || day.country,
-                              state: loc.state
+                              city: loc.city,
+                              state: loc.state,
+                              country: loc.country
                             };
                           })
                           .filter(Boolean)
