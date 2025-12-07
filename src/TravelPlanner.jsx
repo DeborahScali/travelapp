@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { DateRange } from 'react-date-range';
 import 'react-date-range/dist/styles.css';
 import 'react-date-range/dist/theme/default.css';
-import { Plus, Trash2, MapPin, Plane, DollarSign, TrendingUp, Calendar, Map as MapIcon, LogOut, User, ArrowLeft, X, ChevronDown, Coffee, StickyNote, Camera, Building } from 'lucide-react';
+import { Plus, Trash2, MapPin, Plane, DollarSign, TrendingUp, Calendar, Map as MapIcon, LogOut, User, ArrowLeft, X, ChevronDown, Coffee, StickyNote, Camera, Building, FileText, Image as ImageIcon, Loader2, Sparkles, Upload, Edit3 } from 'lucide-react';
 import { FaWalking, FaSubway, FaCar, FaUtensils, FaMapMarkerAlt, FaMapMarkedAlt } from 'react-icons/fa';
 import { FaStar, FaLocationPin } from 'react-icons/fa6';
 import { MdAttachMoney, MdDragIndicator } from 'react-icons/md';
@@ -79,9 +79,66 @@ const getPhotoUrl = (photos, size = 400) => {
   return null;
 };
 
-const getCurrencySymbol = (curr) => {
-  const symbols = { 'EUR': '€', 'USD': '$', 'GBP': '£', 'CHF': 'CHF', 'BRL': 'R$' };
-  return symbols[curr] || '€';
+const getCurrencySymbol = (curr, fallback = '') => {
+  const symbols = { 'EUR': '€', 'USD': '$', 'GBP': '£', 'CHF': 'CHF', 'BRL': 'R$', 'CAD': '$', 'AUD': '$', 'JPY': '¥' };
+  if (!curr) return fallback;
+  return symbols[curr] || curr;
+};
+
+const parseCurrencyFromPrice = (value) => {
+  if (!value) return '';
+  const text = String(value).toUpperCase();
+  const codeMatch = text.match(/\b(USD|EUR|GBP|CHF|BRL|CAD|AUD|JPY|CNY|MXN|ARS|CLP|INR)\b/);
+  if (codeMatch) return codeMatch[1];
+  if (text.includes('R$')) return 'BRL';
+  if (text.includes('CHF')) return 'CHF';
+  if (text.includes('€')) return 'EUR';
+  if (text.includes('£')) return 'GBP';
+  if (text.includes('$')) return 'USD';
+  return '';
+};
+
+const parsePriceValue = (value) => {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : 0;
+  }
+  if (!value) return 0;
+  const cleaned = String(value).replace(/[^0-9.,-]/g, '').trim();
+  if (!cleaned) return 0;
+
+  const hasComma = cleaned.includes(',');
+  const hasDot = cleaned.includes('.');
+  let normalized = cleaned;
+
+  if (hasComma && !hasDot) {
+    // Treat comma as decimal separator (common in BRL/EU formats)
+    normalized = cleaned.replace(/\./g, '').replace(',', '.');
+  } else if (hasComma && hasDot) {
+    // If comma appears after dot, assume comma is decimal and dots are thousands
+    const lastComma = cleaned.lastIndexOf(',');
+    const lastDot = cleaned.lastIndexOf('.');
+    if (lastComma > lastDot) {
+      normalized = cleaned.replace(/\./g, '').replace(',', '.');
+    } else {
+      normalized = cleaned.replace(/,/g, '');
+    }
+  } else {
+    normalized = cleaned;
+  }
+
+  const num = parseFloat(normalized);
+  return Number.isFinite(num) ? num : 0;
+};
+
+const formatFlightPrice = (price, currency) => {
+  const code = currency || parseCurrencyFromPrice(price) || '';
+  const numeric = parsePriceValue(price);
+  if (numeric > 0) {
+    const symbol = getCurrencySymbol(code, '');
+    const amount = `${numeric.toFixed(2)}`;
+    return `${symbol}${amount}${code ? ` ${code}` : ''}`.trim();
+  }
+  return price || '';
 };
 
 const renderTypeIcon = (type, size = 16, className = '') => {
@@ -461,11 +518,20 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
     flightNumber: '',
     from: '',
     to: '',
+    departureDate: '',
+    arrivalDate: '',
     date: '',
     departureTime: '',
     arrivalTime: '',
-    bookingRef: ''
+    bookingRef: '',
+    price: '',
+    priceCurrency: 'USD'
   });
+  const [flightInputMode, setFlightInputMode] = useState('manual'); // manual | pdf | image
+  const [flightDocPreview, setFlightDocPreview] = useState(null);
+  const [flightImagePreview, setFlightImagePreview] = useState('');
+  const [flightExtracting, setFlightExtracting] = useState(false);
+  const [flightExtractError, setFlightExtractError] = useState('');
 
   // Place form state
   const [placeForm, setPlaceForm] = useState({
@@ -497,23 +563,166 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
     currency: 'USD'
   });
 
+  const normalizeFlightPayload = (payload = {}) => ({
+    airline: payload.airline || '',
+    flightNumber: payload.flightNumber || '',
+    from: payload.from || '',
+    to: payload.to || '',
+    departureDate: payload.departureDate || payload.date || '',
+    arrivalDate: payload.arrivalDate || '',
+    date: payload.date || payload.departureDate || '',
+    departureTime: payload.departureTime || '',
+    arrivalTime: payload.arrivalTime || '',
+    bookingRef: payload.bookingRef || '',
+    price: payload.price || payload.value || '',
+    priceCurrency: payload.priceCurrency || payload.currency || parseCurrencyFromPrice(payload.price || payload.value) || 'USD'
+  });
+
+  const readFileAsBase64 = (file) => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result;
+      if (typeof result === 'string') {
+        const [, base64Part] = result.split(',');
+        resolve(base64Part || '');
+      } else {
+        reject(new Error('Unsupported file encoding'));
+      }
+    };
+    reader.onerror = () => reject(new Error('Unable to read file. Please try again.'));
+    reader.readAsDataURL(file);
+  });
+
+  const tryParseJsonFromText = (text = '') => {
+    try {
+      return JSON.parse(text);
+    } catch (err) {
+      const match = text.match(/{[\s\S]*}/);
+      if (match) {
+        try {
+          return JSON.parse(match[0]);
+        } catch (innerErr) {
+          console.error('Gemini JSON parse failed:', innerErr);
+        }
+      }
+    }
+    return null;
+  };
+
+  const extractFlightWithGemini = async ({ base64Data, mimeType }) => {
+    const apiKey = (import.meta.env.VITE_GEMINI_API_KEY || '').trim();
+    if (!apiKey) {
+      throw new Error('Add VITE_GEMINI_API_KEY in your env to enable file/image extraction with Gemini.');
+    }
+
+    const model = (import.meta.env.VITE_GEMINI_MODEL || 'gemini-2.5-flash-lite').trim();
+    const apiVersion = (import.meta.env.VITE_GEMINI_API_VERSION || 'v1').trim(); // v1beta can also be used
+    const prompt = 'Extract flight details from this ticket. Return ONLY a JSON object with keys: airline, flightNumber, from (departure airport), to (arrival airport), departureDate (YYYY-MM-DD), arrivalDate (YYYY-MM-DD), departureTime (24h HH:MM), arrivalTime (24h HH:MM), bookingRef, price (numeric or string with currency), priceCurrency (3-letter ISO like USD/EUR/GBP). Use empty strings when data is missing.';
+    const response = await fetch(`https://generativelanguage.googleapis.com/${apiVersion}/models/${model}:generateContent?key=${apiKey}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [
+          {
+            parts: [
+              { text: prompt },
+              { inline_data: { mime_type: mimeType || 'application/octet-stream', data: base64Data } }
+            ]
+          }
+        ]
+      })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Gemini request failed (${response.status}): ${errorText || 'Unknown error'}`);
+    }
+
+    const data = await response.json();
+    const text = data.candidates?.[0]?.content?.parts?.map(part => part.text || '').join('\n') || '';
+    const parsed = tryParseJsonFromText(text);
+    if (!parsed) {
+      throw new Error('Gemini responded but no flight details were parsed.');
+    }
+    return normalizeFlightPayload(parsed);
+  };
+
+  const handleFlightFileSelection = async (file) => {
+    if (!file) return;
+    setFlightDocPreview({
+      name: file.name,
+      type: file.type || 'unknown',
+      size: file.size
+    });
+    setFlightExtractError('');
+    setFlightExtracting(true);
+
+    if (file.type?.startsWith('image/')) {
+      setFlightImagePreview(URL.createObjectURL(file));
+    } else {
+      setFlightImagePreview('');
+    }
+
+    try {
+      const base64Data = await readFileAsBase64(file);
+      const extracted = await extractFlightWithGemini({ base64Data, mimeType: file.type });
+      setFlightForm(prev => ({
+        ...prev,
+        ...extracted
+      }));
+    } catch (error) {
+      console.error('Flight extraction failed:', error);
+      setFlightExtractError(error.message || 'Unable to extract details. Please fill the form manually.');
+    } finally {
+      setFlightExtracting(false);
+    }
+  };
+
+  const handleFlightPaste = async (event) => {
+    if (flightInputMode !== 'image') return;
+    const items = event.clipboardData?.items;
+    if (!items) return;
+    const imageItem = Array.from(items).find(item => item.type.startsWith('image/'));
+    if (imageItem) {
+      event.preventDefault();
+      const file = imageItem.getAsFile();
+      if (file) {
+        await handleFlightFileSelection(file);
+      }
+    }
+  };
+
+  const resetFlightCaptureState = () => {
+    setFlightForm({
+      airline: '',
+      flightNumber: '',
+      from: '',
+      to: '',
+      departureDate: '',
+      arrivalDate: '',
+      date: '',
+      departureTime: '',
+      arrivalTime: '',
+      bookingRef: '',
+      price: '',
+      priceCurrency: 'USD'
+    });
+    setFlightDocPreview(null);
+    setFlightImagePreview('');
+    setFlightExtractError('');
+    setFlightExtracting(false);
+    setFlightInputMode('manual');
+  };
+
   const handleAddFlight = async () => {
     const newFlight = {
       id: Date.now(),
-      ...flightForm
+      ...flightForm,
+      date: flightForm.departureDate || flightForm.date || ''
     };
     try {
       await saveFlight(newFlight);
-      setFlightForm({
-        airline: '',
-        flightNumber: '',
-        from: '',
-        to: '',
-        date: '',
-        departureTime: '',
-        arrivalTime: '',
-        bookingRef: ''
-      });
+      resetFlightCaptureState();
       setShowAddFlight(false);
     } catch (error) {
       console.error('Failed to add flight:', error);
@@ -1812,11 +2021,22 @@ const parseLocalDate = (value) => {
   }, []);
 
   // Analytics calculations
+  const getFlightsTotal = () => flights.reduce((sum, flight) => sum + parsePriceValue(flight.price), 0);
+  const getAllExpensesTotal = () => expenses.reduce((sum, e) => sum + parseFloat(e.amount || 0), 0) + getFlightsTotal();
+  const formatTotalExpenses = () => {
+    const total = getAllExpensesTotal();
+    return `€${total.toFixed(2)}`;
+  };
+
   const getTotalExpensesByCategory = () => {
     const byCategory = {};
     expenses.forEach(exp => {
       byCategory[exp.category] = (byCategory[exp.category] || 0) + parseFloat(exp.amount || 0);
     });
+    const flightsTotal = getFlightsTotal();
+    if (flightsTotal > 0) {
+      byCategory['flights'] = flightsTotal;
+    }
     return byCategory;
   };
 
@@ -1953,6 +2173,20 @@ const parseLocalDate = (value) => {
                         </span>
                       </div>
                     )}
+                  </div>
+
+                  {/* Trip Totals */}
+                  <div className="flex flex-wrap items-center gap-2 pt-1">
+                    <div className="flex items-center gap-2 bg-[#4ECDC4]/10 text-[#1B7F79] border border-[#4ECDC4]/30 rounded-full px-3 py-1 text-sm font-semibold">
+                      <DollarSign size={14} />
+                      <span>Total Expenses</span>
+                      <span>{formatTotalExpenses()}</span>
+                    </div>
+                    <div className="flex items-center gap-2 bg-gray-100 text-gray-700 border border-gray-200 rounded-full px-3 py-1 text-sm">
+                      <Plane size={14} className="text-[#4ECDC4]" />
+                      <span>Flights</span>
+                      <span>€{getFlightsTotal().toFixed(2)}</span>
+                    </div>
                   </div>
                 </div>
               )}
@@ -3468,10 +3702,10 @@ const parseLocalDate = (value) => {
             <div className="space-y-4">
               <div className="flex justify-between items-center mb-4">
                 <h2 className="text-2xl font-bold">Flights</h2>
-                <button
-                  onClick={() => setShowAddFlight(true)}
-                  className="px-4 py-2 bg-gradient-to-r from-[#4ECDC4] to-[#44A08D] text-white rounded-xl hover:shadow-lg transition-all hover:scale-[1.02] flex items-center gap-2 font-medium"
-                >
+                      <button
+                        onClick={() => setShowAddFlight(true)}
+                        className="px-4 py-2 bg-gradient-to-r from-[#4ECDC4] to-[#44A08D] text-white rounded-xl hover:shadow-lg transition-all hover:scale-[1.02] flex items-center gap-2 font-medium"
+                      >
                   <Plus size={20} />
                   Add Flight
                 </button>
@@ -3504,7 +3738,20 @@ const parseLocalDate = (value) => {
                             </div>
                           </div>
                           <div className="text-sm text-gray-500 mt-2">
-                            {new Date(flight.date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                            {(() => {
+                              const depart = flight.departureDate || flight.date;
+                              const arrive = flight.arrivalDate;
+                              const format = (d) => d ? new Date(d).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : '';
+                              if (depart && arrive && depart !== arrive) {
+                                return `${format(depart)} → ${format(arrive)}`;
+                              }
+                              return depart ? format(depart) : 'Date not set';
+                            })()}
+                            {formatFlightPrice(flight.price, flight.priceCurrency) && (
+                              <span className="ml-2 inline-flex items-center text-gray-700 font-semibold">
+                                • {formatFlightPrice(flight.price, flight.priceCurrency)}
+                              </span>
+                            )}
                           </div>
                         </div>
                         <button
@@ -3521,83 +3768,210 @@ const parseLocalDate = (value) => {
 
               {/* Add Flight Modal */}
               {showAddFlight && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-                  <div className="bg-white rounded-lg p-4 sm:p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-                    <h3 className="text-xl sm:text-2xl font-bold mb-4">Add Flight</h3>
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                  <div className="bg-white rounded-2xl shadow-xl p-4 sm:p-5 max-w-3xl w-full max-h-[92vh] overflow-y-auto border border-gray-100">
+                    <div className="flex items-start justify-between gap-3 mb-3">
+                      <div>
+                        <p className="text-xs uppercase tracking-[0.12em] text-[#1B7F79] font-semibold">Flights</p>
+                        <h3 className="text-xl sm:text-2xl font-bold text-gray-900">Add Flight</h3>
+                      </div>
+                      <button
+                        onClick={() => {
+                          resetFlightCaptureState();
+                          setShowAddFlight(false);
+                        }}
+                        className="p-2 rounded-full hover:bg-gray-100 text-gray-500"
+                      >
+                        <X size={18} />
+                      </button>
+                    </div>
+
                     <div className="space-y-4">
-                      <div className="grid grid-cols-2 gap-4">
+                      <div className="grid sm:grid-cols-3 gap-2 bg-gray-50 border border-gray-200 rounded-xl p-2">
+                        {[
+                          { key: 'manual', label: 'Manual', icon: <Edit3 size={16} /> },
+                          { key: 'pdf', label: 'PDF', icon: <FileText size={16} />, ai: true },
+                          { key: 'image', label: 'Image', icon: <ImageIcon size={16} />, ai: true }
+                        ].map(opt => (
+                          <button
+                            key={opt.key}
+                            onClick={() => setFlightInputMode(opt.key)}
+                            className={`flex items-center justify-center gap-2 px-3 py-2 rounded-lg border text-sm transition-all ${
+                              flightInputMode === opt.key
+                                ? 'border-[#4ECDC4] bg-white shadow-sm text-[#1B7F79]'
+                                : 'border-transparent bg-gray-50 hover:border-gray-200 text-gray-700'
+                            }`}
+                          >
+                            {opt.icon}
+                            <span className="flex items-center gap-1">
+                              {opt.label}
+                              {opt.ai && <Sparkles size={14} className="text-[#4ECDC4]" />}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+
+                      {flightInputMode !== 'manual' && (
+                        <div
+                          className="border border-gray-200 rounded-xl p-3 space-y-3 bg-gray-50"
+                          onPaste={flightInputMode === 'image' ? handleFlightPaste : undefined}
+                        >
+                          <div className="flex items-center justify-between gap-2 flex-wrap">
+                            <div className="flex items-center gap-2 text-sm text-gray-700">
+                              <Upload size={16} className="text-[#4ECDC4]" />
+                              <span>{flightInputMode === 'pdf' ? 'Upload e-ticket PDF' : 'Upload or paste ticket image'}</span>
+                            </div>
+                            <span className="text-xs text-gray-500">Cmd/Ctrl + V to paste</span>
+                          </div>
+                          <label className="inline-flex items-center gap-2 px-4 py-2 bg-white border rounded-lg cursor-pointer hover:border-[#4ECDC4] transition-colors text-sm">
+                            <Upload size={14} />
+                            <span>Select file</span>
+                            <input
+                              type="file"
+                              accept={flightInputMode === 'pdf' ? 'application/pdf' : 'image/*'}
+                              className="hidden"
+                              onChange={(e) => handleFlightFileSelection(e.target.files?.[0] || null)}
+                            />
+                          </label>
+
+                          {flightDocPreview && (
+                            <div className="flex items-center gap-2 text-sm text-gray-700">
+                              <FileText size={14} className="text-[#4ECDC4]" />
+                              <span>{flightDocPreview.name}</span>
+                              <span className="text-gray-400">({flightDocPreview.type})</span>
+                            </div>
+                          )}
+
+                          {flightImagePreview && (
+                            <div className="rounded-lg overflow-hidden border bg-white">
+                              <img src={flightImagePreview} alt="Flight ticket preview" className="max-h-48 w-full object-contain" />
+                            </div>
+                          )}
+
+                          {flightExtracting && (
+                            <div className="flex items-center gap-2 text-sm text-[#1B7F79]">
+                              <Loader2 size={14} className="animate-spin" />
+                              Extracting details...
+                            </div>
+                          )}
+
+                          {flightExtractError && (
+                            <div className="text-sm text-red-600">{flightExtractError}</div>
+                          )}
+                        </div>
+                      )}
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <input
                           type="text"
                           placeholder="Airline *"
                           value={flightForm.airline}
                           onChange={(e) => setFlightForm({ ...flightForm, airline: e.target.value })}
-                          className="px-3 py-2 border rounded-lg"
+                          className="px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#4ECDC4] focus:border-[#4ECDC4] transition"
                         />
                         <input
                           type="text"
                           placeholder="Flight number *"
                           value={flightForm.flightNumber}
                           onChange={(e) => setFlightForm({ ...flightForm, flightNumber: e.target.value })}
-                          className="px-3 py-2 border rounded-lg"
+                          className="px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#4ECDC4] focus:border-[#4ECDC4] transition"
                         />
                         <input
                           type="text"
                           placeholder="From (airport) *"
                           value={flightForm.from}
                           onChange={(e) => setFlightForm({ ...flightForm, from: e.target.value })}
-                          className="px-3 py-2 border rounded-lg"
+                          className="px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#4ECDC4] focus:border-[#4ECDC4] transition"
                         />
                         <input
                           type="text"
                           placeholder="To (airport) *"
                           value={flightForm.to}
                           onChange={(e) => setFlightForm({ ...flightForm, to: e.target.value })}
-                          className="px-3 py-2 border rounded-lg"
+                          className="px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#4ECDC4] focus:border-[#4ECDC4] transition"
                         />
                         <input
                           type="date"
-                          value={flightForm.date}
-                          onChange={(e) => setFlightForm({ ...flightForm, date: e.target.value })}
-                          className="px-3 py-2 border rounded-lg"
+                          value={flightForm.departureDate || flightForm.date}
+                          onChange={(e) => setFlightForm({ ...flightForm, departureDate: e.target.value, date: e.target.value })}
+                          className="px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#4ECDC4] focus:border-[#4ECDC4] transition"
+                          placeholder="Departure date"
+                        />
+                        <input
+                          type="date"
+                          value={flightForm.arrivalDate}
+                          onChange={(e) => setFlightForm({ ...flightForm, arrivalDate: e.target.value })}
+                          className="px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#4ECDC4] focus:border-[#4ECDC4] transition"
+                          placeholder="Arrival date"
                         />
                         <input
                           type="text"
                           placeholder="Booking reference"
                           value={flightForm.bookingRef}
                           onChange={(e) => setFlightForm({ ...flightForm, bookingRef: e.target.value })}
-                          className="px-3 py-2 border rounded-lg"
+                          className="px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#4ECDC4] focus:border-[#4ECDC4] transition"
                         />
+                        <div className="grid grid-cols-2 gap-2">
+                          <input
+                            type="text"
+                            placeholder="Price (e.g., USD 350)"
+                            value={flightForm.price}
+                            onChange={(e) => setFlightForm({ 
+                              ...flightForm, 
+                              price: e.target.value,
+                              priceCurrency: parseCurrencyFromPrice(e.target.value) || flightForm.priceCurrency
+                            })}
+                            className="px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#4ECDC4] focus:border-[#4ECDC4] transition"
+                          />
+                          <select
+                            value={flightForm.priceCurrency}
+                            onChange={(e) => setFlightForm({ ...flightForm, priceCurrency: e.target.value })}
+                            className="px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#4ECDC4] focus:border-[#4ECDC4] transition bg-white"
+                          >
+                            <option value="USD">USD</option>
+                            <option value="EUR">EUR</option>
+                            <option value="GBP">GBP</option>
+                            <option value="CHF">CHF</option>
+                            <option value="BRL">BRL</option>
+                            <option value="CAD">CAD</option>
+                            <option value="AUD">AUD</option>
+                            <option value="JPY">JPY</option>
+                          </select>
+                        </div>
                         <input
                           type="time"
                           placeholder="Departure time"
                           value={flightForm.departureTime}
                           onChange={(e) => setFlightForm({ ...flightForm, departureTime: e.target.value })}
-                          className="px-3 py-2 border rounded-lg"
+                          className="px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#4ECDC4] focus:border-[#4ECDC4] transition"
                         />
                         <input
                           type="time"
                           placeholder="Arrival time"
                           value={flightForm.arrivalTime}
                           onChange={(e) => setFlightForm({ ...flightForm, arrivalTime: e.target.value })}
-                          className="px-3 py-2 border rounded-lg"
+                          className="px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#4ECDC4] focus:border-[#4ECDC4] transition"
                         />
                       </div>
-                    </div>
-                    
-                    <div className="flex flex-col sm:flex-row gap-3 mt-6">
-                      <button
-                        onClick={handleAddFlight}
-                        disabled={!flightForm.airline || !flightForm.flightNumber || !flightForm.from || !flightForm.to}
-                        className="flex-1 px-4 py-2 bg-gradient-to-r from-[#4ECDC4] to-[#44A08D] text-white rounded-xl hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm sm:text-base font-medium"
-                      >
-                        Add Flight
-                      </button>
-                      <button
-                        onClick={() => setShowAddFlight(false)}
-                        className="flex-1 px-4 py-2 border-2 border-gray-200 rounded-xl hover:bg-gray-50 text-sm sm:text-base transition-all"
-                      >
-                        Cancel
-                      </button>
+
+                      <div className="flex flex-col sm:flex-row gap-3">
+                        <button
+                          onClick={handleAddFlight}
+                          disabled={!flightForm.airline || !flightForm.flightNumber || !flightForm.from || !flightForm.to}
+                          className="flex-1 px-4 py-3 bg-gradient-to-r from-[#4ECDC4] to-[#44A08D] text-white rounded-xl hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm sm:text-base font-semibold"
+                        >
+                          Save Flight
+                        </button>
+                        <button
+                          onClick={() => {
+                            resetFlightCaptureState();
+                            setShowAddFlight(false);
+                          }}
+                          className="flex-1 px-4 py-3 border-2 border-gray-200 rounded-xl hover:bg-gray-50 text-sm sm:text-base transition-all"
+                        >
+                          Cancel
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -3610,6 +3984,18 @@ const parseLocalDate = (value) => {
             <div className="space-y-4">
               <div className="flex justify-between items-center mb-4">
                 <h2 className="text-2xl font-bold">Expenses</h2>
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 bg-[#4ECDC4]/10 text-[#1B7F79] border border-[#4ECDC4]/30 rounded-full px-3 py-1 text-sm font-semibold">
+                    <DollarSign size={14} />
+                    <span>Total</span>
+                    <span>{formatTotalExpenses()}</span>
+                  </div>
+                  <div className="flex items-center gap-2 bg-gray-100 text-gray-700 border border-gray-200 rounded-full px-3 py-1 text-sm">
+                    <Plane size={14} className="text-[#4ECDC4]" />
+                    <span>Flights</span>
+                    <span>€{getFlightsTotal().toFixed(2)}</span>
+                  </div>
+                </div>
                 <button
                   onClick={() => setShowAddExpense(true)}
                   className="px-4 py-2 bg-gradient-to-r from-[#FFE66D] to-[#FFBE5C] text-gray-800 rounded-xl hover:shadow-lg transition-all hover:scale-[1.02] flex items-center gap-2 font-medium"
@@ -3831,7 +4217,7 @@ const parseLocalDate = (value) => {
                       <div className="mt-3 pt-3 border-t font-bold text-lg flex justify-between">
                         <span>Total</span>
                         <span className="text-[#F7B731]">
-                          ${expenses.reduce((sum, e) => sum + parseFloat(e.amount || 0), 0).toFixed(2)}
+                          ${getAllExpensesTotal().toFixed(2)}
                         </span>
                       </div>
                     </div>
