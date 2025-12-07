@@ -1892,65 +1892,65 @@ const parseLocalDate = (value) => {
               {selectedDayData && (
                 <div>
                   {/* Day Info */}
-                  <div className="mb-6 p-4 bg-gray-50 rounded-lg">
-                    <div className="flex items-center justify-between mb-3">
-                      <h3 className="text-xl font-bold">
-                        {parseLocalDate(selectedDayData.date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-                      </h3>
+                  <div className="mb-6 p-4 rounded-xl border border-gray-100 bg-gradient-to-r from-white to-[#FF6B6B]/5 shadow-sm">
+                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                      <div className="flex items-start gap-3">
+                        <div className="hidden sm:block w-1 self-stretch bg-[#FF6B6B] rounded-full opacity-80"></div>
+                        <div className="flex flex-col gap-1">
+                          {editingDayTitle ? (
+                            <input
+                              type="text"
+                              value={dayTitleValue}
+                              onChange={(e) => setDayTitleValue(e.target.value)}
+                              onBlur={handleSaveDayTitle}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') handleSaveDayTitle();
+                                if (e.key === 'Escape') setEditingDayTitle(false);
+                              }}
+                              autoFocus
+                              placeholder={`Day ${dailyPlans.findIndex(d => d.id === selectedDay) + 1}`}
+                              className="w-full px-3 py-2 rounded-lg bg-white/80 border border-[#FF6B6B]/30 text-lg font-semibold text-[#FF6B6B] outline-none shadow-sm"
+                            />
+                          ) : (
+                            <div
+                              onClick={() => handleStartEditingDayTitle(selectedDayData.title)}
+                              className="w-full px-0 py-1 rounded cursor-pointer text-lg font-semibold text-[#FF6B6B] hover:text-[#E85A5A] transition-colors"
+                            >
+                              {selectedDayData.title || `Day ${dailyPlans.findIndex(d => d.id === selectedDay) + 1}`}
+                            </div>
+                          )}
+                          <div className="text-xs uppercase tracking-[0.08em] text-gray-500">
+                            {parseLocalDate(selectedDayData.date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                          </div>
+                        </div>
+                      </div>
 
                       {/* Smart Summaries */}
-                      <div className="flex items-center gap-4 text-sm text-gray-600">
-                        <div className="flex items-center gap-1" title="Total stops">
+                      <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-700 flex-wrap">
+                        <div className="flex items-center gap-1 bg-white/70 px-3 py-1.5 rounded-full border border-gray-100 shadow-sm" title="Total stops">
                           <FaMapMarkerAlt className="text-[#FF6B6B]" size={14} />
-                          <span className="font-medium">{daySummaries[selectedDay]?.totalStops ?? 0}</span>
+                          <span className="font-semibold">{daySummaries[selectedDay]?.totalStops ?? 0}</span>
                         </div>
-                        <div className="flex items-center gap-1" title="Total walking distance">
+                        <div className="flex items-center gap-1 bg-white/70 px-3 py-1.5 rounded-full border border-gray-100 shadow-sm" title="Total walking distance">
                           <span>🚶</span>
-                          <span className="font-medium">
+                          <span className="font-semibold">
                             {(daySummaries[selectedDay]?.totalDistance ?? 0).toFixed(1)} km
                           </span>
                         </div>
-                        <div className="flex items-center gap-1" title="Estimated total time">
+                        <div className="flex items-center gap-1 bg-white/70 px-3 py-1.5 rounded-full border border-gray-100 shadow-sm" title="Estimated total time">
                           <span>⏱</span>
-                          <span className="font-medium">
+                          <span className="font-semibold">
                             {daySummaries[selectedDay]?.totalTime ?? 0} min
                           </span>
                         </div>
-                        <div className="flex items-center gap-1" title="Expected daily cost">
+                        <div className="flex items-center gap-1 bg-white/70 px-3 py-1.5 rounded-full border border-gray-100 shadow-sm" title="Expected daily cost">
                           <span>💶</span>
-                          <span className="font-medium">
+                          <span className="font-semibold">
                             €{(daySummaries[selectedDay]?.totalCost ?? 0).toFixed(2)}
                           </span>
                         </div>
                       </div>
                     </div>
-                    
-                    {/* Day Title - Inline Edit */}
-                    <div className="mb-4">
-                      {editingDayTitle ? (
-                        <input
-                          type="text"
-                          value={dayTitleValue}
-                          onChange={(e) => setDayTitleValue(e.target.value)}
-                          onBlur={handleSaveDayTitle}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') handleSaveDayTitle();
-                            if (e.key === 'Escape') setEditingDayTitle(false);
-                          }}
-                          autoFocus
-                          placeholder={`Day ${dailyPlans.findIndex(d => d.id === selectedDay) + 1}`}
-                          className="w-full px-3 py-2 rounded bg-gray-100 font-medium text-[#FF6B6B] outline-none"
-                        />
-                      ) : (
-                        <div
-                          onClick={() => handleStartEditingDayTitle(selectedDayData.title)}
-                          className="w-full px-3 py-2 rounded cursor-pointer hover:bg-gray-100 transition-colors font-medium text-[#FF6B6B]"
-                        >
-                          {selectedDayData.title || `Day ${dailyPlans.findIndex(d => d.id === selectedDay) + 1}`}
-                        </div>
-                      )}
-                    </div>
-
                   </div>
 
                   {/* Places List */}
