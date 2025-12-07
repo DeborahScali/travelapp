@@ -2556,15 +2556,15 @@ const parseLocalDate = (value) => {
                                 {/* Cost input for compact items */}
                                 <div className="mt-1 flex items-center gap-1.5 text-xs text-gray-700">
                                   <div className="flex items-center gap-1 px-2 py-1 bg-white border border-gray-200 rounded-md shadow-sm">
-                                    <MdAttachMoney size={14} className="text-gray-400" />
+                                    <MdAttachMoney size={14} className="text-gray-500" />
                                     <input
-                                      type="number"
-                                      step="0.01"
+                                      type="text"
+                                      inputMode="decimal"
                                       value={place.cost || ''}
                                       onChange={(e) => {
-                                        const updatedPlans = dailyPlans.map(d => ({
+                                        const updatedPlans = dailyPlans.map((d) => ({
                                           ...d,
-                                          places: d.places.map(p =>
+                                          places: d.places.map((p) =>
                                             p.id === place.id && d.id === selectedDay
                                               ? { ...p, cost: e.target.value }
                                               : p
@@ -2573,8 +2573,8 @@ const parseLocalDate = (value) => {
                                         setDailyPlans(updatedPlans);
                                       }}
                                       onClick={(e) => e.stopPropagation()}
-                                      className="w-20 px-2 py-1 border border-gray-100 rounded bg-slate-50 text-[12px] font-medium text-gray-800 focus:border-[#4ECDC4] focus:ring-1 focus:ring-[#4ECDC4] focus:outline-none"
-                                      placeholder="25.00"
+                                    className="w-14 px-2 py-1 border border-gray-100 rounded bg-slate-50 text-[11px] font-semibold text-gray-800 focus:border-[#4ECDC4] focus:ring-1 focus:ring-[#4ECDC4] focus:outline-none"
+                                    placeholder="25.00"
                                     />
                                     <button
                                       onClick={(e) => {
@@ -2586,7 +2586,7 @@ const parseLocalDate = (value) => {
                                         });
                                         setShowCurrencyPicker(showCurrencyPicker === place.id ? null : place.id);
                                       }}
-                                      className="h-7 px-2 text-gray-600 hover:text-[#4ECDC4] transition-colors cursor-pointer text-xs font-semibold border border-gray-100 rounded bg-white"
+                                      className="px-2 py-1 text-gray-700 hover:text-[#0b6559] hover:border-[#4ECDC4] transition-colors cursor-pointer text-[11px] font-semibold border border-gray-100 rounded bg-white"
                                     >
                                       {(place.currency || 'EUR') === 'EUR' && '€'}
                                       {(place.currency || 'EUR') === 'USD' && '$'}
@@ -2913,8 +2913,8 @@ const parseLocalDate = (value) => {
                                           <div className="flex items-center gap-1 px-2 py-1 bg-white border border-gray-200 rounded-md shadow-sm">
                                             <MdAttachMoney size={14} className="text-gray-500" />
                                             <input
-                                              type="number"
-                                              step="0.01"
+                                              type="text"
+                                              inputMode="decimal"
                                               value={place.cost || ''}
                                               onChange={(e) => {
                                                 const updatedPlans = dailyPlans.map((d) => ({
@@ -2928,7 +2928,7 @@ const parseLocalDate = (value) => {
                                                 setDailyPlans(updatedPlans);
                                               }}
                                               onClick={(e) => e.stopPropagation()}
-                                              className="w-20 px-2 py-1 border border-gray-100 rounded bg-slate-50 text-[11px] font-semibold text-gray-800 focus:border-[#4ECDC4] focus:ring-1 focus:ring-[#4ECDC4] focus:outline-none"
+                                              className="w-14 px-2 py-1 border border-gray-100 rounded bg-slate-50 text-[11px] font-semibold text-gray-800 focus:border-[#4ECDC4] focus:ring-1 focus:ring-[#4ECDC4] focus:outline-none"
                                               placeholder="25.00"
                                             />
                                             <button
