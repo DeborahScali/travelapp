@@ -292,8 +292,8 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
     };
 
     // Use pointerdown so we catch both mouse and touch interactions
-    document.addEventListener('pointerdown', closePickers, true);
-    return () => document.removeEventListener('pointerdown', closePickers, true);
+    document.addEventListener('pointerdown', closePickers);
+    return () => document.removeEventListener('pointerdown', closePickers);
   }, [openTimePicker]);
 
   // Initialize day summaries immediately when day is selected
@@ -302,7 +302,9 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
       const totalStops = selectedDayData.places?.length || 0;
       const totalDistance = selectedDayData.places?.reduce((sum, p) => sum + parseFloat(p.distance || 0), 0) || 0;
       const totalTime = selectedDayData.places?.reduce((sum, p) => sum + parseFloat(p.transportTime || 0), 0) || 0;
-      const totalCost = expenses.filter(e => e.dayId === selectedDay).reduce((sum, e) => sum + parseFloat(e.amount || 0), 0) || 0;
+      const placeCost = selectedDayData.places?.reduce((sum, p) => sum + (parseFloat(p.cost || 0) || 0), 0) || 0;
+      const expenseCost = expenses.filter(e => e.dayId === selectedDay).reduce((sum, e) => sum + (parseFloat(e.amount || 0) || 0), 0) || 0;
+      const totalCost = placeCost + expenseCost;
 
       setDaySummaries(prev => ({
         ...prev,
@@ -318,11 +320,13 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
 
   // Immediate update of cost when expenses change
   useEffect(() => {
-    if (!selectedDay) return;
+    if (!selectedDay || !selectedDayData) return;
 
-    const totalCost = expenses
+    const placeCost = selectedDayData.places?.reduce((sum, p) => sum + (parseFloat(p.cost || 0) || 0), 0) || 0;
+    const expenseCost = expenses
       .filter(e => e.dayId === selectedDay)
-      .reduce((sum, e) => sum + parseFloat(e.amount || 0), 0) || 0;
+      .reduce((sum, e) => sum + (parseFloat(e.amount || 0) || 0), 0) || 0;
+    const totalCost = placeCost + expenseCost;
 
     // Avoid infinite render loops by only updating when the value actually changes
     setDaySummaries(prev => {
@@ -339,7 +343,7 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
         }
       };
     });
-  }, [expenses, selectedDay]);
+  }, [expenses, selectedDay, selectedDayData]);
 
   // Debounced update of day summaries for places (3 seconds after changes)
   useEffect(() => {
@@ -2579,7 +2583,7 @@ const parseLocalDate = (value) => {
 
                           {/* Place Card */}
                           <div
-                            draggable={!place.visited}
+                            draggable={!place.visited && openTimePicker?.placeId !== place.id}
                             onDragStart={(e) => handleDragStart(e, selectedDay, place.id)}
                             onDragOver={handleDragOver}
                             onDrop={(e) => handleDrop(e, selectedDay, place.id)}
@@ -2917,11 +2921,13 @@ const parseLocalDate = (value) => {
                                     {/* Compact Metadata Inputs */}
                                       <div className="flex items-center gap-2 text-xs flex-wrap">
                                       {/* Start / End time (custom picker) */}
-                                      <div className="relative flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                                      <div className="relative flex items-center gap-1" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
                                         <div className="flex items-center gap-1 px-2 py-1 bg-white border border-gray-200 rounded-md shadow-sm">
                                           <IoMdTime size={14} className="text-gray-600" />
                                           <button
                                             type="button"
+                                            onPointerDown={(e) => e.stopPropagation()}
+                                            onDragStart={(e) => e.preventDefault()}
                                             onClick={(e) => {
                                               e.stopPropagation();
                                               openTimePickerAt(place.id, 'start', e.currentTarget);
@@ -2933,6 +2939,8 @@ const parseLocalDate = (value) => {
                                           <span className="text-gray-300 text-xs">–</span>
                                           <button
                                             type="button"
+                                            onPointerDown={(e) => e.stopPropagation()}
+                                            onDragStart={(e) => e.preventDefault()}
                                             onClick={(e) => {
                                               e.stopPropagation();
                                               openTimePickerAt(place.id, 'end', e.currentTarget);
@@ -2947,6 +2955,7 @@ const parseLocalDate = (value) => {
                                           <div
                                             ref={timePickerRef}
                                             className="fixed z-30 bg-white border border-gray-200 rounded-lg shadow-lg p-2 flex gap-2"
+                                            onPointerDown={(e) => e.stopPropagation()}
                                             style={{ top: timePickerPosition.top, left: timePickerPosition.left }}
                                           >
                                             <div className="flex-1 max-h-48 overflow-y-auto border-r border-gray-100 pr-2">
