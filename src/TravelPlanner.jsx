@@ -2460,11 +2460,6 @@ const parseLocalDate = (value) => {
                                   >
                                     <Trash2 size={16} />
                                   </button>
-                                  {place.cost && (
-                                    <span className="text-sm font-semibold text-gray-900 whitespace-nowrap">
-                                      {getCurrencySymbol(place.currency)}{place.cost}
-                                    </span>
-                                  )}
                                 </div>
                                 {/* Cost input for compact items */}
                                 <div className="mt-2 flex items-center gap-2 text-xs text-gray-700">
@@ -2578,19 +2573,9 @@ const parseLocalDate = (value) => {
                                       </div>
 
                                       <div className="flex flex-wrap items-center gap-2 mb-1">
-                                        {place.duration && (
-                                          <span className="px-3 py-1 text-xs rounded-full bg-[#4ECDC4]/10 text-[#17806f] border border-[#4ECDC4]/20">
-                                            ⏱ {place.duration}h
-                                          </span>
-                                        )}
-                                        {place.cost && (
-                                          <span className="px-3 py-1 text-xs rounded-full bg-[#FF6B6B]/10 text-[#c84a4a] border border-[#FF6B6B]/20">
-                                            💰 {place.cost} {place.currency || ''}
-                                          </span>
-                                        )}
                                         {place.visited && (
-                                          <span className="px-3 py-1 text-xs rounded-full bg-gray-800 text-white">
-                                            Completed
+                                          <span className="inline-flex items-center gap-1 px-3 py-1 text-[11px] rounded-full bg-[#ecfdf3] text-[#166534] border border-[#bbf7d0] shadow-sm font-semibold">
+                                            ✓ <span className="tracking-tight">Completed</span>
                                           </span>
                                         )}
                                       </div>
