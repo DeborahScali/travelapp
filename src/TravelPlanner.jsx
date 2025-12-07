@@ -60,6 +60,26 @@ const getCitiesList = (countries = null) => {
     );
 };
 
+// Get a usable photo URL from the Google Place photos array (supports new/legacy helpers)
+const getPhotoUrl = (photos, size = 400) => {
+  if (!photos || photos.length === 0) return null;
+  const firstPhoto = photos[0];
+
+  if (firstPhoto.createMediaUrl) {
+    return firstPhoto.createMediaUrl({ maxHeight: size, maxWidth: size });
+  }
+
+  if (firstPhoto.getURI) {
+    return firstPhoto.getURI({ maxHeight: size, maxWidth: size });
+  }
+
+  if (firstPhoto.getUrl) {
+    return firstPhoto.getUrl({ maxWidth: size, maxHeight: size });
+  }
+
+  return null;
+};
+
 const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMode = () => {} }) => {
   // Authentication
   const { currentUser, signOut } = useAuth();
@@ -356,6 +376,7 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
     address: '',
     placeId: '',
     location: null,
+    photoUrl: '',
     notes: '',
     transportMode: 'walking',
     transportTime: '',
@@ -458,6 +479,7 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
       address: '',
       placeId: '',
       location: null,
+      photoUrl: '',
       notes: '',
       transportMode: 'walking',
       priority: 0,
@@ -854,9 +876,9 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
       });
 
       // Convert new format to match old format for compatibility
-      const predictions = suggestions.map(s => {
+      const predictions = await Promise.all(suggestions.map(async (s) => {
         const pred = s.placePrediction;
-        return {
+        const base = {
           place_id: pred.placeId,
           description: pred.text?.toString() || '',
           structured_formatting: {
@@ -864,7 +886,18 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
             secondary_text: pred.structuredFormat?.secondaryText?.toString() || ''
           }
         };
-      });
+
+        // Try to attach a small preview photo for the suggestion
+        try {
+          const place = new window.google.maps.places.Place({ id: pred.placeId });
+          await place.fetchFields({ fields: ['photos'] });
+          const photoUrl = getPhotoUrl(place.photos, 160);
+          return { ...base, photoUrl };
+        } catch (err) {
+          console.warn('Failed to fetch photo for suggestion', pred.placeId, err);
+          return base;
+        }
+      }));
 
       setPlaceSuggestions(predictions);
       setPlaceSearchLoading(false);
@@ -886,14 +919,17 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
 
       // Fetch place details
       await place.fetchFields({
-        fields: ['displayName', 'formattedAddress', 'location']
+        fields: ['displayName', 'formattedAddress', 'location', 'photos']
       });
+
+      const photoUrl = getPhotoUrl(place.photos, 600);
 
       const placeData = {
         name: place.displayName || placeSearchTerm,
         address: place.formattedAddress || placeSearchTerm,
         placeId: suggestion.place_id,
         location: place.location ? { lat: place.location.lat(), lng: place.location.lng() } : null,
+        photoUrl: photoUrl || '',
         notes: '',
         transportMode: 'walking',
         transportTime: '',
@@ -961,6 +997,7 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
         address: '',
         placeId: '',
         location: null,
+        photoUrl: '',
         notes: '',
         transportMode: 'walking',
         transportTime: '',
@@ -2283,6 +2320,18 @@ const parseLocalDate = (value) => {
                               place.visited ? 'bg-gray-50 border-gray-300' : 'hover:shadow-md cursor-move'
                             } ${draggedItem?.placeId === place.id ? 'opacity-50' : ''}`}
                           >
+                            {/* Photo preview */}
+                            {place.photoUrl && (
+                              <div className="h-32 w-full bg-gray-100 overflow-hidden">
+                                <img
+                                  src={place.photoUrl}
+                                  alt={place.name}
+                                  className="w-full h-full object-cover"
+                                  loading="lazy"
+                                />
+                              </div>
+                            )}
+
                             {/* Place Header */}
                             <div className="p-3 sm:p-4">
                               <div className="flex items-start gap-3">
@@ -2876,8 +2925,21 @@ const parseLocalDate = (value) => {
                                     onClick={() => handlePlaceSuggestionSelect(s)}
                                     className="w-full text-left px-4 py-3 hover:bg-gray-50 transition-colors"
                                   >
-                                    <div className="font-medium text-sm">{s.structured_formatting?.main_text || s.description}</div>
-                                    <div className="text-xs text-gray-500">{s.structured_formatting?.secondary_text || 'Google Places'}</div>
+                                    <div className="flex items-center gap-3">
+                                      {s.photoUrl && (
+                                        <div className="w-12 h-12 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0">
+                                          <img
+                                            src={s.photoUrl}
+                                            alt={s.structured_formatting?.main_text || s.description}
+                                            className="w-full h-full object-cover"
+                                          />
+                                        </div>
+                                      )}
+                                      <div className="flex-1">
+                                        <div className="font-medium text-sm">{s.structured_formatting?.main_text || s.description}</div>
+                                        <div className="text-xs text-gray-500">{s.structured_formatting?.secondary_text || 'Google Places'}</div>
+                                      </div>
+                                    </div>
                                   </button>
                                 ))}
                               </div>

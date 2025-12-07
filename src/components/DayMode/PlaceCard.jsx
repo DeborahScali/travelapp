@@ -42,6 +42,17 @@ const PlaceCard = ({ place, index, onMarkVisited, onMarkSkipped, onUpdateActualC
           : 'border-gray-100 hover:border-[#4ECDC4]/30 hover:shadow-lg'
       }`}
     >
+      {place.photoUrl && (
+        <div className="w-full h-32 overflow-hidden rounded-t-xl">
+          <img
+            src={place.photoUrl}
+            alt={place.name}
+            className="w-full h-full object-cover"
+            loading="lazy"
+          />
+        </div>
+      )}
+
       {/* Header - Always visible */}
       <div
         className="px-4 py-3 flex items-start justify-between cursor-pointer"
