@@ -562,6 +562,7 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
     country: '',
     currency: 'USD'
   });
+  const [expenseSummaryMode, setExpenseSummaryMode] = useState('category'); // category | day | location
 
   const normalizeFlightPayload = (payload = {}) => ({
     airline: payload.airline || '',
@@ -2022,7 +2023,12 @@ const parseLocalDate = (value) => {
 
   // Analytics calculations
   const getFlightsTotal = () => flights.reduce((sum, flight) => sum + parsePriceValue(flight.price), 0);
-  const getAllExpensesTotal = () => expenses.reduce((sum, e) => sum + parseFloat(e.amount || 0), 0) + getFlightsTotal();
+  const getPlaceCostsTotal = () => dailyPlans.reduce(
+    (sum, day) => sum + day.places.reduce((acc, place) => acc + parsePriceValue(place.cost), 0),
+    0
+  );
+  const getAllExpensesTotal = () =>
+    expenses.reduce((sum, e) => sum + parseFloat(e.amount || 0), 0) + getFlightsTotal() + getPlaceCostsTotal();
   const formatTotalExpenses = () => {
     const total = getAllExpensesTotal();
     return `€${total.toFixed(2)}`;
@@ -2037,6 +2043,10 @@ const parseLocalDate = (value) => {
     if (flightsTotal > 0) {
       byCategory['flights'] = flightsTotal;
     }
+    const placeTotal = getPlaceCostsTotal();
+    if (placeTotal > 0) {
+      byCategory['places'] = placeTotal;
+    }
     return byCategory;
   };
 
@@ -2047,6 +2057,12 @@ const parseLocalDate = (value) => {
         byCity[exp.city] = (byCity[exp.city] || 0) + parseFloat(exp.amount || 0);
       }
     });
+    dailyPlans.forEach(day => {
+      if (day.city) {
+        const dayPlaceTotal = day.places.reduce((sum, p) => sum + parsePriceValue(p.cost), 0);
+        byCity[day.city] = (byCity[day.city] || 0) + dayPlaceTotal;
+      }
+    });
     return byCity;
   };
 
@@ -2055,6 +2071,12 @@ const parseLocalDate = (value) => {
     expenses.forEach(exp => {
       if (exp.country) {
         byCountry[exp.country] = (byCountry[exp.country] || 0) + parseFloat(exp.amount || 0);
+      }
+    });
+    dailyPlans.forEach(day => {
+      if (day.country) {
+        const dayPlaceTotal = day.places.reduce((sum, p) => sum + parsePriceValue(p.cost), 0);
+        byCountry[day.country] = (byCountry[day.country] || 0) + dayPlaceTotal;
       }
     });
     return byCountry;
@@ -2082,6 +2104,87 @@ const parseLocalDate = (value) => {
       }
     });
     return byCity;
+  };
+
+  const getExpensesByDay = () => {
+    const byDay = {};
+    expenses.forEach(exp => {
+      if (exp.date) {
+        byDay[exp.date] = (byDay[exp.date] || 0) + parseFloat(exp.amount || 0);
+      }
+    });
+    dailyPlans.forEach(day => {
+      const dayTotal = day.places.reduce((sum, p) => sum + parsePriceValue(p.cost), 0);
+      if (day.date) {
+        byDay[day.date] = (byDay[day.date] || 0) + dayTotal;
+      }
+    });
+    flights.forEach(flight => {
+      const d = flight.departureDate || flight.date;
+      if (d) {
+        byDay[d] = (byDay[d] || 0) + parsePriceValue(flight.price);
+      }
+    });
+    return byDay;
+  };
+
+  const getExpensesByLocation = () => {
+    const byLocation = {};
+    expenses.forEach(exp => {
+      const city = exp.city || '';
+      const country = exp.country || '';
+      const label = city && country ? `${city}, ${country}` : city || country || 'Unspecified';
+      byLocation[label] = (byLocation[label] || 0) + parseFloat(exp.amount || 0);
+    });
+    dailyPlans.forEach(day => {
+      const dayTotal = day.places.reduce((sum, p) => sum + parsePriceValue(p.cost), 0);
+      const city = day.city || '';
+      const country = day.country || '';
+      const label = city && country ? `${city}, ${country}` : city || country || 'Unspecified';
+      byLocation[label] = (byLocation[label] || 0) + dayTotal;
+    });
+    return byLocation;
+  };
+
+  const getExpenseSummaryData = (mode) => {
+    switch (mode) {
+      case 'day':
+        return Object.entries(getExpensesByDay()).map(([label, value]) => ({ label, value }));
+      case 'location':
+        return Object.entries(getExpensesByLocation()).map(([label, value]) => ({ label, value }));
+      case 'category':
+      default:
+        return Object.entries(getTotalExpensesByCategory()).map(([label, value]) => ({ label, value }));
+    }
+  };
+
+  const renderExpenseBars = (mode) => {
+    const data = getExpenseSummaryData(mode);
+    if (!data.length) return null;
+    const max = Math.max(...data.map(d => d.value));
+    return (
+      <div className="space-y-2">
+        {data
+          .sort((a, b) => b.value - a.value)
+          .map(({ label, value }) => {
+            const width = max === 0 ? 0 : (value / max) * 100;
+            return (
+              <div key={`${mode}-${label}`} className="flex items-center gap-3">
+                <div className="w-32 text-sm text-gray-700 truncate">{label}</div>
+                <div className="flex-1 bg-gray-100 rounded-full h-2.5 overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-[#4ECDC4] to-[#44A08D]"
+                    style={{ width: `${width}%` }}
+                  />
+                </div>
+                <div className="text-sm font-semibold text-gray-800 whitespace-nowrap">
+                  ${value.toFixed(2)}
+                </div>
+              </div>
+            );
+          })}
+      </div>
+    );
   };
 
   return (
@@ -4005,41 +4108,96 @@ const parseLocalDate = (value) => {
                 </button>
               </div>
 
+              <div className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm space-y-3">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <DollarSign size={16} className="text-[#26DE81]" />
+                    <p className="font-semibold text-gray-800">Spending overview</p>
+                  </div>
+                  <div className="flex items-center gap-2 text-sm">
+                    {[
+                      { key: 'category', label: 'By category' },
+                      { key: 'day', label: 'By day' },
+                      { key: 'location', label: 'By location' }
+                    ].map(opt => (
+                      <button
+                        key={opt.key}
+                        onClick={() => setExpenseSummaryMode(opt.key)}
+                        className={`px-3 py-1 rounded-full border text-sm transition ${
+                          expenseSummaryMode === opt.key
+                            ? 'border-[#4ECDC4] text-[#1B7F79] bg-[#4ECDC4]/10'
+                            : 'border-gray-200 text-gray-600 hover:border-gray-300'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {renderExpenseBars(expenseSummaryMode) || (
+                  <p className="text-sm text-gray-500">No expenses yet to summarize.</p>
+                )}
+              </div>
+
               {expenses.length === 0 ? (
                 <div className="text-center py-12 text-gray-500">
                   <DollarSign size={48} className="mx-auto mb-4 opacity-50 text-[#FFE66D]" />
                   <p>No expenses tracked yet. Click "Add Expense" to get started.</p>
                 </div>
               ) : (
-                <div className="space-y-3">
-                  {expenses.map(expense => (
-                    <div key={expense.id} className="border-2 border-gray-100 rounded-xl p-4 hover:shadow-lg hover:border-[#FFE66D]/50 transition-all">
-                      <div className="flex justify-between items-start">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-3 mb-2">
-                            <span className="font-bold text-lg">{expense.description}</span>
-                            <span className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-sm">
-                              {expense.category}
-                            </span>
+                <div className="space-y-2">
+                  {[...expenses, ...dailyPlans.flatMap(day =>
+                    day.places
+                      .map(place => {
+                        const amount = parsePriceValue(place.cost);
+                        if (!amount) return null;
+                        return {
+                          id: `place-${day.id}-${place.id}`,
+                          description: place.name || 'Place cost',
+                          category: 'places',
+                          amount,
+                          currency: place.currency || 'EUR',
+                          date: day.date,
+                          city: day.city,
+                          country: day.country,
+                          _source: 'place'
+                        };
+                      })
+                      .filter(Boolean)
+                  )]
+                    .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0))
+                    .map(expense => (
+                      <div key={expense.id} className="border border-gray-200 rounded-xl p-3 bg-white hover:shadow-sm transition">
+                        <div className="flex justify-between items-center gap-3">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-semibold text-gray-900 truncate">{expense.description}</span>
+                              <span className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs capitalize">
+                                {expense.category}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-3 text-sm text-gray-600 mt-1">
+                              <span>{expense.date ? new Date(expense.date).toLocaleDateString() : 'No date'}</span>
+                              {expense.city && <span>📍 {expense.city}</span>}
+                              {expense.country && <span>🌍 {expense.country}</span>}
+                            </div>
                           </div>
-                          <div className="text-2xl font-bold text-[#F7B731] mb-2">
-                            {expense.currency} ${parseFloat(expense.amount).toFixed(2)}
-                          </div>
-                          <div className="flex gap-4 text-sm text-gray-600">
-                            <span>{new Date(expense.date).toLocaleDateString()}</span>
-                            {expense.city && <span>📍 {expense.city}</span>}
-                            {expense.country && <span>🌍 {expense.country}</span>}
+                          <div className="text-right">
+                            <div className="text-lg font-bold text-[#F7B731]">
+                              {expense.currency || 'USD'} ${parseFloat(expense.amount || 0).toFixed(2)}
+                            </div>
+                            {expense._source !== 'place' && (
+                              <button
+                                onClick={() => handleDeleteExpense(expense.id)}
+                                className="text-red-600 hover:text-red-700 text-xs mt-1"
+                              >
+                                Delete
+                              </button>
+                            )}
                           </div>
                         </div>
-                        <button
-                          onClick={() => handleDeleteExpense(expense.id)}
-                          className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
-                        >
-                          <Trash2 size={18} />
-                        </button>
                       </div>
-                    </div>
-                  ))}
+                    ))}
                 </div>
               )}
 
