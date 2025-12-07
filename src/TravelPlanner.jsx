@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { DateRange } from 'react-date-range';
 import 'react-date-range/dist/styles.css';
 import 'react-date-range/dist/theme/default.css';
-import { Plus, Trash2, MapPin, Plane, DollarSign, TrendingUp, Calendar, Map as MapIcon, LogOut, User, ArrowLeft, X, ChevronDown, Coffee, StickyNote, Camera, Building, FileText, Image as ImageIcon, Loader2, Sparkles, Upload, Edit3 } from 'lucide-react';
+import { Plus, Trash2, MapPin, Plane, DollarSign, TrendingUp, Calendar, Map as MapIcon, LogOut, User, ArrowLeft, X, ChevronDown, Coffee, StickyNote, Camera, Building, FileText, Image as ImageIcon, Loader2, Sparkles, Upload, Edit3, Utensils, BedDouble, Bus, ShoppingBag, Ticket } from 'lucide-react';
 import { FaWalking, FaSubway, FaCar, FaUtensils, FaMapMarkerAlt, FaMapMarkedAlt } from 'react-icons/fa';
 import { FaStar, FaLocationPin } from 'react-icons/fa6';
 import { MdAttachMoney, MdDragIndicator } from 'react-icons/md';
@@ -2019,6 +2019,25 @@ const parseLocalDate = (value) => {
 
 const formatBaseAmount = (amount) => {
   return `${amount.toFixed(2)}`;
+};
+
+const renderExpenseIcon = (category, size = 14) => {
+  switch (category) {
+    case 'food':
+      return <Utensils size={size} className="text-[#F7B731]" />;
+    case 'accommodation':
+      return <BedDouble size={size} className="text-[#4ECDC4]" />;
+    case 'transportation':
+      return <Bus size={size} className="text-[#FF6B6B]" />;
+    case 'activities':
+      return <Ticket size={size} className="text-[#45AAF2]" />;
+    case 'shopping':
+      return <ShoppingBag size={size} className="text-[#9B59B6]" />;
+    case 'places':
+      return <MapPin size={size} className="text-[#1B7F79]" />;
+    default:
+      return <DollarSign size={size} className="text-gray-500" />;
+  }
 };
 
   const getRouteInGoogleMaps = (origin, destination) => {
@@ -4131,18 +4150,10 @@ const formatBaseAmount = (amount) => {
                     <DollarSign size={14} />
                     <span>Total</span>
                     <span>{formatTotalExpenses()}</span>
-                  </div>
-                  <div className="flex items-center gap-2 bg-gray-100 text-gray-700 border border-gray-200 rounded-full px-3 py-1 text-sm">
-                    <Plane size={14} className="text-[#4ECDC4]" />
-                    <span>Flights</span>
-                    <span>{formatBaseAmount(getFlightsTotal())}</span>
-                  </div>
-                  <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-full px-3 py-1 text-sm">
-                    <span className="text-gray-600">Base currency</span>
                     <select
                       value={baseCurrency}
                       onChange={(e) => setBaseCurrency(e.target.value)}
-                      className="bg-transparent outline-none font-semibold text-gray-900"
+                      className="bg-transparent outline-none font-semibold text-[#0b6559] text-xs border border-transparent rounded cursor-pointer"
                     >
                       <option value="EUR">EUR</option>
                       <option value="USD">USD</option>
@@ -4195,67 +4206,107 @@ const formatBaseAmount = (amount) => {
                 )}
               </div>
 
-              {expenses.length === 0 ? (
-                <div className="text-center py-12 text-gray-500">
-                  <DollarSign size={48} className="mx-auto mb-4 opacity-50 text-[#FFE66D]" />
-                  <p>No expenses tracked yet. Click "Add Expense" to get started.</p>
-                </div>
-              ) : (
+              <div className="space-y-4">
                 <div className="space-y-2">
-                  {[...expenses, ...dailyPlans.flatMap(day =>
-                    day.places
-                      .map(place => {
-                        const amount = parsePriceValue(place.cost);
-                        if (!amount) return null;
-                        return {
-                          id: `place-${day.id}-${place.id}`,
-                          description: place.name || 'Place cost',
-                          category: 'places',
-                          amount,
-                          currency: place.currency || 'EUR',
-                          date: day.date,
-                          city: day.city,
-                          country: day.country,
-                          _source: 'place'
-                        };
-                      })
-                      .filter(Boolean)
-                  )]
-                    .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0))
-                    .map(expense => (
-                      <div key={expense.id} className="border border-gray-200 rounded-xl p-3 bg-white hover:shadow-sm transition">
-                        <div className="flex justify-between items-center gap-3">
-                          <div className="flex-1">
+                  <h4 className="font-semibold text-gray-800">Added expenses</h4>
+                  {expenses.length === 0 ? (
+                    <div className="text-sm text-gray-500">No expenses added yet.</div>
+                  ) : (
+                    <div className="space-y-2">
+                      {[...expenses]
+                        .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0))
+                        .map(expense => (
+                          <div key={expense.id} className="border border-gray-200 rounded-lg p-2 bg-white hover:shadow-sm transition">
                             <div className="flex items-center gap-2">
-                              <span className="font-semibold text-gray-900 truncate">{expense.description}</span>
-                              <span className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs capitalize">
-                                {expense.category}
+                              <span className="flex items-center justify-center w-7 h-7 rounded-full bg-gray-50 border border-gray-200">
+                                {renderExpenseIcon(expense.category)}
                               </span>
-                            </div>
-                            <div className="flex items-center gap-3 text-sm text-gray-600 mt-1">
-                              <span>{expense.date ? new Date(expense.date).toLocaleDateString() : 'No date'}</span>
-                              {expense.city && <span>📍 {expense.city}</span>}
-                              {expense.country && <span>🌍 {expense.country}</span>}
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 text-sm">
+                                  <span className="font-semibold text-gray-900 truncate">{expense.description}</span>
+                                  <span className="px-2 py-[2px] bg-gray-100 text-gray-700 rounded text-[11px] capitalize">
+                                    {expense.category}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-3 text-xs text-gray-600">
+                                  <span>{expense.date ? new Date(expense.date).toLocaleDateString() : 'No date'}</span>
+                                  {expense.city && <span>📍 {expense.city}</span>}
+                                  {expense.country && <span>🌍 {expense.country}</span>}
+                                </div>
+                              </div>
+                              <div className="text-right shrink-0">
+                                <div className="text-sm font-bold text-[#F7B731]">
+                                  {expense.currency || 'USD'} ${parseFloat(expense.amount || 0).toFixed(2)}
+                                </div>
+                                <button
+                                  onClick={() => handleDeleteExpense(expense.id)}
+                                  className="text-red-600 hover:text-red-700 text-[11px]"
+                                >
+                                  Delete
+                                </button>
+                              </div>
                             </div>
                           </div>
-                          <div className="text-right">
-                            <div className="text-lg font-bold text-[#F7B731]">
-                              {expense.currency || 'USD'} ${parseFloat(expense.amount || 0).toFixed(2)}
+                        ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <h4 className="font-semibold text-gray-800">Itinerary costs</h4>
+                  {dailyPlans.every(day => day.places.every(p => !parsePriceValue(p.cost))) ? (
+                    <div className="text-sm text-gray-500">No itinerary costs recorded.</div>
+                  ) : (
+                    <div className="space-y-2">
+                      {dailyPlans.flatMap(day =>
+                        day.places
+                          .map(place => {
+                            const amount = parsePriceValue(place.cost);
+                            if (!amount) return null;
+                            return {
+                              id: `place-${day.id}-${place.id}`,
+                              description: place.name || 'Place cost',
+                              amount,
+                              currency: place.currency || 'EUR',
+                              date: day.date,
+                              city: day.city,
+                              country: day.country
+                            };
+                          })
+                          .filter(Boolean)
+                      )
+                      .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0))
+                      .map(expense => (
+                        <div key={expense.id} className="border border-gray-200 rounded-lg p-2 bg-white hover:shadow-sm transition">
+                          <div className="flex items-center gap-2">
+                            <span className="flex items-center justify-center w-7 h-7 rounded-full bg-gray-50 border border-gray-200">
+                              {renderExpenseIcon('places')}
+                            </span>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 text-sm">
+                                <span className="font-semibold text-gray-900 truncate">{expense.description}</span>
+                                <span className="px-2 py-[2px] bg-gray-100 text-gray-700 rounded text-[11px]">
+                                  Itinerary
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-3 text-xs text-gray-600">
+                                <span>{expense.date ? new Date(expense.date).toLocaleDateString() : 'No date'}</span>
+                                {expense.city && <span>📍 {expense.city}</span>}
+                                {expense.country && <span>🌍 {expense.country}</span>}
+                              </div>
                             </div>
-                            {expense._source !== 'place' && (
-                              <button
-                                onClick={() => handleDeleteExpense(expense.id)}
-                                className="text-red-600 hover:text-red-700 text-xs mt-1"
-                              >
-                                Delete
-                              </button>
-                            )}
+                            <div className="text-right shrink-0">
+                              <div className="text-sm font-bold text-[#F7B731]">
+                                {expense.currency || 'EUR'} ${parseFloat(expense.amount || 0).toFixed(2)}
+                              </div>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
+                  )}
                 </div>
-              )}
+              </div>
 
               {/* Add Expense Modal */}
               {showAddExpense && (
