@@ -1632,12 +1632,14 @@ const parseLocalDate = (value) => {
     <div className="min-h-screen bg-[#F8F9FA] p-2 sm:p-4">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="gradient-header rounded-2xl shadow-lg p-4 sm:p-6 mb-4 sm:mb-6">
+        <div className="rounded-2xl border border-gray-100 bg-white shadow-md p-4 sm:p-6 mb-4 sm:mb-6">
           <div className="flex items-center justify-between flex-wrap gap-3">
             <div className="flex-1">
-              <h1 className="text-2xl sm:text-3xl font-bold text-white flex items-center gap-2 mb-2">
-                <MapPin className="text-white" size={24} />
-                Travel Planner
+              <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 flex items-center gap-3 mb-2">
+                <span className="h-10 w-10 rounded-full bg-[#FF6B6B] flex items-center justify-center text-white shadow-sm">
+                  <MapPin className="text-white" size={20} />
+                </span>
+                <span>Travel Planner</span>
               </h1>
               
               {currentTrip && (
@@ -1655,15 +1657,15 @@ const parseLocalDate = (value) => {
                           if (e.key === 'Escape') setEditingTripName(false);
                         }}
                         autoFocus
-                        className="px-3 py-1 rounded bg-white/90 text-lg font-medium flex-1 outline-none"
+                        className="px-3 py-1 rounded border border-gray-200 bg-white text-lg font-medium flex-1 outline-none focus:border-[#FF6B6B]"
                       />
                     </div>
                   ) : (
                     <div
                       onClick={handleStartEditingTripName}
-                      className="cursor-pointer hover:bg-white/20 px-3 py-1 rounded transition-colors inline-block"
+                      className="cursor-pointer hover:bg-gray-50 px-3 py-1 rounded transition-colors inline-block"
                     >
-                      <span className="text-lg font-medium text-white">{currentTrip.name}</span>
+                      <span className="text-lg font-medium text-gray-900">{currentTrip.name}</span>
                     </div>
                   )}
 
@@ -1710,7 +1712,7 @@ const parseLocalDate = (value) => {
                         onClick={handleStartEditingTripDates}
                         className="cursor-pointer hover:bg-white/20 px-3 py-1 rounded transition-colors inline-block"
                       >
-                        <span className="text-sm text-white/90">
+                        <span className="text-sm text-gray-600">
                           {parseLocalDate(currentTrip.startDate).toLocaleDateString()} - {parseLocalDate(currentTrip.endDate).toLocaleDateString()}
                         </span>
                       </div>
@@ -1730,20 +1732,20 @@ const parseLocalDate = (value) => {
                     console.error('Failed to go back to trip setup:', error);
                   }
                 }}
-                className="w-10 h-10 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors"
+                className="w-10 h-10 rounded-full border border-gray-200 bg-white text-gray-600 hover:text-[#FF6B6B] hover:border-[#FF6B6B]/40 flex items-center justify-center transition-colors shadow-sm"
                 title="Back to trip setup"
               >
-                <ArrowLeft size={20} className="text-white" />
+                <ArrowLeft size={20} />
               </button>
 
               {/* Day Mode button */}
               <button
                 onClick={onEnterDayMode}
-                className="px-4 py-2 bg-white/20 hover:bg-white/30 rounded-full flex items-center gap-2 transition-all hover:shadow-lg border border-white/30 backdrop-blur-sm"
+                className="px-4 py-2 bg-white rounded-full flex items-center gap-2 transition-all hover:shadow-md border border-gray-200 text-gray-700 hover:text-[#FF6B6B] hover:border-[#FF6B6B]/40"
                 title="Switch to Day Mode"
               >
-                <Calendar size={18} className="text-white" />
-                <span className="text-white font-medium text-sm hidden sm:inline">Day Mode</span>
+                <Calendar size={18} />
+                <span className="text-gray-800 font-medium text-sm hidden sm:inline">Day Mode</span>
               </button>
 
               {/* Avatar-only button that opens a user menu with Setup API, Account Settings and Sign Out */}
@@ -1751,13 +1753,13 @@ const parseLocalDate = (value) => {
                 <div className="relative" ref={userMenuRef}>
                   <button
                     onClick={() => setShowUserMenu(prev => !prev)}
-                    className="w-10 h-10 rounded-full bg-white shadow-sm flex items-center justify-center focus:outline-none"
+                    className="w-10 h-10 rounded-full bg-white shadow-sm flex items-center justify-center focus:outline-none border border-gray-100"
                     title={currentUser.displayName || currentUser.email}
                   >
                     {currentUser.photoURL ? (
                       <img src={currentUser.photoURL} alt={currentUser.displayName} className="w-10 h-10 rounded-full object-cover border-2 border-white/50" />
                     ) : (
-                      <div className="w-10 h-10 rounded-full bg-white/30 flex items-center justify-center text-white font-medium border-2 border-white/50">
+                      <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-gray-700 font-medium border-2 border-white">
                         {(currentUser.displayName || currentUser.email || 'U')[0].toUpperCase()}
                       </div>
                     )}
