@@ -1890,9 +1890,9 @@ const parseLocalDate = (value) => {
               </div>
 
               {selectedDayData && (
-                <div>
+                <div className="rounded-2xl border border-gray-100 shadow-md overflow-hidden bg-white">
                   {/* Day Info */}
-                  <div className="mb-6 p-4 rounded-xl border border-gray-100 bg-gradient-to-r from-white to-[#FF6B6B]/5 shadow-sm">
+                  <div className="p-4 sm:p-5 border-b border-gray-100 bg-gradient-to-r from-white to-[#FF6B6B]/5">
                     <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                       <div className="flex items-start gap-3">
                         <div className="hidden sm:block w-1 self-stretch bg-[#FF6B6B] rounded-full opacity-80"></div>
@@ -1909,7 +1909,7 @@ const parseLocalDate = (value) => {
                               }}
                               autoFocus
                               placeholder={`Day ${dailyPlans.findIndex(d => d.id === selectedDay) + 1}`}
-                              className="w-full px-3 py-2 rounded-lg bg-white/80 border border-[#FF6B6B]/30 text-lg font-semibold text-[#FF6B6B] outline-none shadow-sm"
+                              className="w-full px-3 py-2 rounded-lg bg-white/90 border border-[#FF6B6B]/30 text-lg font-semibold text-[#FF6B6B] outline-none shadow-sm"
                             />
                           ) : (
                             <div
@@ -1954,7 +1954,7 @@ const parseLocalDate = (value) => {
                   </div>
 
                   {/* Places List */}
-                  <div className="space-y-3">
+                  <div className="space-y-3 p-3 sm:p-5 bg-white">
                     {selectedDayData.places.map((place, index) => (
                       <React.Fragment key={place.id}>
                         {/* Transportation Info - Between places */}
@@ -1969,7 +1969,7 @@ const parseLocalDate = (value) => {
                               className="text-teal-500 hover:text-teal-600 transition-colors cursor-pointer"
                               title="Add place here"
                             >
-                              <IoIosAddCircle size={20} />
+                              <IoIosAddCircle size={28} />
                             </button>
 
                             <div className="relative">
