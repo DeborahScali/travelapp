@@ -5,9 +5,8 @@ import 'react-date-range/dist/theme/default.css';
 import { Plus, Trash2, MapPin, Plane, DollarSign, TrendingUp, Calendar, Map as MapIcon, LogOut, User, ArrowLeft, X, ChevronDown, Coffee, StickyNote, Camera, Building } from 'lucide-react';
 import { FaWalking, FaSubway, FaCar, FaUtensils, FaMapMarkerAlt, FaMapMarkedAlt } from 'react-icons/fa';
 import { FaStar, FaLocationPin } from 'react-icons/fa6';
-import { TbTimeDuration30 } from 'react-icons/tb';
 import { MdAttachMoney, MdDragIndicator } from 'react-icons/md';
-import { IoIosAddCircle, IoIosArrowBack, IoIosArrowForward } from 'react-icons/io';
+import { IoIosAddCircle, IoIosArrowBack, IoIosArrowForward, IoMdTime } from 'react-icons/io';
 import { useAuth } from './contexts/AuthContext';
 import { useTrips, useCurrentTrip, useFlights, useDailyPlans, useExpenses } from './hooks/useFirestore';
 
@@ -101,6 +100,38 @@ const renderTypeIcon = (type, size = 16, className = '') => {
 };
 
 const isCompactType = (type) => type && type !== 'place';
+
+const formatTimeDisplay = (value) => {
+  if (!value || typeof value !== 'string') return '';
+  const [h, m] = value.split(':');
+  const hourNum = parseInt(h, 10);
+  if (Number.isNaN(hourNum) || !m) return value;
+  return `${hourNum}:${m.padStart(2, '0')}`;
+};
+
+const formatTimeRange = (start, end) => {
+  const s = formatTimeDisplay(start);
+  const e = formatTimeDisplay(end);
+  return s && e ? `${s} - ${e}` : '';
+};
+
+const parseTimeParts = (value) => {
+  if (!value || typeof value !== 'string' || !value.includes(':')) {
+    return { hour: 0, minute: 0 };
+  }
+  const [h, m] = value.split(':').map(Number);
+  return {
+    hour: Number.isNaN(h) ? 0 : h,
+    minute: Number.isNaN(m) ? 0 : m
+  };
+};
+
+const buildTimeValue = (hour, minute) => {
+  const hh = String(Math.max(0, Math.min(23, hour))).padStart(2, '0');
+  const mm = String(Math.max(0, Math.min(59, minute))).padStart(2, '0');
+  return `${hh}:${mm}`;
+};
+
 
 const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMode = () => {} }) => {
   // Authentication
@@ -238,6 +269,17 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [insertingAtIndex]);
+
+  // Close time picker on outside click
+  useEffect(() => {
+    const closePickers = (e) => {
+      if (timePickerRef.current && timePickerRef.current.contains(e.target)) return;
+      if (timePickerAnchorRef.current && timePickerAnchorRef.current.contains(e.target)) return;
+      setOpenTimePicker(null);
+    };
+    document.addEventListener('mousedown', closePickers);
+    return () => document.removeEventListener('mousedown', closePickers);
+  }, []);
 
   // Initialize day summaries immediately when day is selected
   useEffect(() => {
@@ -407,6 +449,8 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
     transportMode: 'walking',
     transportTime: '',
     distance: '',
+    startTime: '',
+    endTime: '',
     priority: 0,
     metroStation: '',
     metroLine: '',
@@ -511,6 +555,8 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
       priority: 0,
       transportTime: '',
       distance: '',
+      startTime: '',
+      endTime: '',
       metroStation: '',
       metroLine: '',
       visited: false
@@ -642,6 +688,40 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
       );
       setDailyPlans(recalculatedPlans);
     }
+  };
+
+  const handleTimeSelect = (dayId, placeId, field, value, shouldClose = true) => {
+    const targetField = field === 'start' ? 'startTime' : field === 'end' ? 'endTime' : field;
+    const updatedPlans = dailyPlans.map(d => ({
+      ...d,
+      places: d.places.map(p =>
+        p.id === placeId && d.id === dayId
+          ? { ...p, [targetField]: value }
+          : p
+      )
+    }));
+    setDailyPlans(updatedPlans);
+    if (shouldClose) {
+      setOpenTimePicker(null);
+    }
+  };
+
+  const openTimePickerAt = (placeId, field, triggerEl) => {
+    if (triggerEl) {
+      timePickerAnchorRef.current = triggerEl;
+      const rect = triggerEl.getBoundingClientRect();
+      const estimatedHeight = 220;
+      const width = 170;
+      const topSpace = rect.top;
+      const bottomSpace = window.innerHeight - rect.bottom;
+      let top = rect.bottom + 6;
+      if (bottomSpace < estimatedHeight && topSpace > estimatedHeight) {
+        top = rect.top - estimatedHeight - 6;
+      }
+      const left = Math.max(8, Math.min(window.innerWidth - width - 8, rect.left));
+      setTimePickerPosition({ top, left });
+    }
+    setOpenTimePicker({ placeId, field });
   };
 
   const handleChangePriority = (dayId, placeId, newPriority) => {
@@ -864,6 +944,10 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
   const [mapPlaceholderDismissed, setMapPlaceholderDismissed] = useState(false);
   const [changingTransportMode, setChangingTransportMode] = useState(null); // {dayId, placeId}
   const [editingManualDistance, setEditingManualDistance] = useState(null); // {dayId, placeId, distance, time}
+  const [openTimePicker, setOpenTimePicker] = useState(null); // {placeId, field}
+  const [timePickerPosition, setTimePickerPosition] = useState({ top: 0, left: 0 });
+  const timePickerRef = useRef(null);
+  const timePickerAnchorRef = useRef(null);
 
   const waitForGoogleMaps = () => {
     if (mapsReady && window.google?.maps) {
@@ -996,6 +1080,8 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
           transportMode: 'walking',
           transportTime: '',
           distance: '',
+          startTime: '',
+          endTime: '',
           type: selectedAddType || 'place'
         };
       } else {
@@ -1028,6 +1114,8 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
           transportMode: 'walking',
           transportTime: '',
           distance: '',
+          startTime: '',
+          endTime: '',
           type: selectedAddType || 'place'
         };
       }
@@ -1087,17 +1175,19 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
       setDailyPlans(updatedPlans);
 
       // Reset form
-      setPlaceForm({
-        name: '',
-        address: '',
-        placeId: '',
-        location: null,
-        photoUrl: '',
-        notes: '',
-        transportMode: 'walking',
-        transportTime: '',
-        distance: ''
-      });
+    setPlaceForm({
+      name: '',
+      address: '',
+      placeId: '',
+      location: null,
+      photoUrl: '',
+      notes: '',
+      transportMode: 'walking',
+      transportTime: '',
+      distance: '',
+      startTime: '',
+      endTime: ''
+    });
       setPlaceSearchTerm('');
       setPlaceSuggestions([]);
       setSelectedAddType(null); // Reset to show menu again
@@ -1233,18 +1323,18 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
               <span style="font-size:18px;">${getTypeIcon(place.type)}</span>
               <div style="flex:1;">
                 <strong style="font-size:15px;color:#111827;display:block;">${place.name || 'Place'}</strong>
-                ${place.address ? `<div style="color:#6b7280;font-size:12px;margin-top:2px;line-height:1.4;">${place.address}</div>` : ''}
-              </div>
-              ${priorityStars ? `<div style="background:#fff4e5;border:1px solid #fde68a;padding:4px 8px;border-radius:8px;font-size:11px;white-space:nowrap;">${priorityStars}</div>` : ''}
-            </div>
-            <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;font-size:11px;">
-              ${place.visitTime ? `<div style="background:#f3f4f6;padding:4px 8px;border-radius:6px;">🕐 ${place.visitTime}</div>` : ''}
-              ${place.duration ? `<div style="background:#f3f4f6;padding:4px 8px;border-radius:6px;">⏱️ ${place.duration}h</div>` : ''}
-              ${place.cost ? `<div style="background:#f3f4f6;padding:4px 8px;border-radius:6px;">💰 ${place.cost} ${getCurrencySymbol(place.currency)}</div>` : ''}
-              ${place.transportMode || place.distance || place.transportTime ? `
-                <div style="background:#e0f2fe;padding:4px 8px;border-radius:6px;display:flex;align-items:center;gap:6px;">
-                  <span>${transportIcons[place.transportMode] || '🧭'}</span>
-                  <span style="color:#0f172a;">
+            ${place.address ? `<div style="color:#6b7280;font-size:12px;margin-top:2px;line-height:1.4;">${place.address}</div>` : ''}
+          </div>
+          ${priorityStars ? `<div style="background:#fff4e5;border:1px solid #fde68a;padding:4px 8px;border-radius:8px;font-size:11px;white-space:nowrap;">${priorityStars}</div>` : ''}
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;font-size:11px;">
+          ${place.visitTime ? `<div style="background:#f3f4f6;padding:4px 8px;border-radius:6px;">🕐 ${place.visitTime}</div>` : ''}
+          ${(place.startTime && place.endTime) ? `<div style="background:#eef2ff;padding:4px 8px;border-radius:6px;">⏳ ${formatTimeRange(place.startTime, place.endTime)}</div>` : ''}
+          ${place.cost ? `<div style="background:#f3f4f6;padding:4px 8px;border-radius:6px;">💰 ${place.cost} ${getCurrencySymbol(place.currency)}</div>` : ''}
+          ${place.transportMode || place.distance || place.transportTime ? `
+            <div style="background:#e0f2fe;padding:4px 8px;border-radius:6px;display:flex;align-items:center;gap:6px;">
+              <span>${transportIcons[place.transportMode] || '🧭'}</span>
+              <span style="color:#0f172a;">
                     ${place.transportMode ? place.transportMode.charAt(0).toUpperCase() + place.transportMode.slice(1) : 'Route'}
                     ${place.distance ? ` • ${place.distance} km` : ''}${place.transportTime ? ` • ${place.transportTime} min` : ''}
                   </span>
@@ -2319,6 +2409,8 @@ const parseLocalDate = (value) => {
                                           transportMode: 'walking',
                                           transportTime: '',
                                           distance: '',
+                                          startTime: '',
+                                          endTime: '',
                                           priority: 0
                                         };
                                         const updatedPlans = dailyPlans.map(day => {
@@ -2420,7 +2512,7 @@ const parseLocalDate = (value) => {
                             className={`flex-1 transition-all ring-1 ring-transparent ${
                               isCompactType(place.type)
                                 ? `rounded-xl bg-white border border-gray-200 shadow-sm hover:shadow-md hover:-translate-y-0.5 px-3 py-2 ${place.visited ? 'opacity-80' : ''}`
-                                : `relative rounded-2xl overflow-hidden ${
+                                : `relative rounded-2xl overflow-visible ${
                                     place.visited
                                       ? 'bg-gray-50 border border-gray-200'
                                       : 'bg-white/90 border border-gray-100 shadow-sm hover:shadow-lg hover:-translate-y-0.5 hover:ring-[#FF6B6B]/15 cursor-move'
@@ -2428,7 +2520,7 @@ const parseLocalDate = (value) => {
                             } ${draggedItem?.placeId === place.id ? 'opacity-50' : ''}`}
                           >
                             {isCompactType(place.type) ? (
-                              <div className="relative flex items-center gap-3 pr-24">
+                              <div className="relative flex items-center gap-2 pr-14">
                                 <div className="flex items-center gap-2 min-w-0">
                                   <div className="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center text-gray-700">
                                     {renderTypeIcon(place.type, 16, 'text-gray-700')}
@@ -2440,7 +2532,7 @@ const parseLocalDate = (value) => {
                                   </div>
                                 </div>
                                 {/* Cost + actions aligned top-right */}
-                                <div className="absolute top-1.5 right-1.5 flex items-center gap-1.5">
+                                <div className="absolute top-1.5 right-1 flex items-center gap-1">
                                   <button
                                     onClick={(e) => {
                                       e.stopPropagation();
@@ -2462,45 +2554,47 @@ const parseLocalDate = (value) => {
                                   </button>
                                 </div>
                                 {/* Cost input for compact items */}
-                                <div className="mt-2 flex items-center gap-2 text-xs text-gray-700">
-                                  <MdAttachMoney size={14} className="text-gray-400" />
-                                  <input
-                                    type="number"
-                                    step="0.01"
-                                    value={place.cost || ''}
-                                    onChange={(e) => {
-                                      const updatedPlans = dailyPlans.map(d => ({
-                                        ...d,
-                                        places: d.places.map(p =>
-                                          p.id === place.id && d.id === selectedDay
-                                            ? { ...p, cost: e.target.value }
-                                            : p
-                                        )
-                                      }));
-                                      setDailyPlans(updatedPlans);
-                                    }}
-                                    onClick={(e) => e.stopPropagation()}
-                                    className="w-20 px-2 py-1 border border-gray-300 rounded focus:border-[#4ECDC4] focus:outline-none"
-                                    placeholder="25.00"
-                                  />
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      const rect = e.currentTarget.getBoundingClientRect();
-                                      setCurrencyPickerPosition({
-                                        top: rect.bottom + 8,
-                                        left: rect.right - 180
-                                      });
-                                      setShowCurrencyPicker(showCurrencyPicker === place.id ? null : place.id);
-                                    }}
-                                    className="text-gray-500 hover:text-[#4ECDC4] transition-colors cursor-pointer text-xs font-medium"
-                                  >
-                                    {(place.currency || 'EUR') === 'EUR' && '€'}
-                                    {(place.currency || 'EUR') === 'USD' && '$'}
-                                    {(place.currency || 'EUR') === 'GBP' && '£'}
-                                    {(place.currency || 'EUR') === 'CHF' && 'CHF'}
-                                    {(place.currency || 'EUR') === 'BRL' && 'R$'}
-                                  </button>
+                                <div className="mt-1 flex items-center gap-1.5 text-xs text-gray-700">
+                                  <div className="flex items-center gap-1 px-2 py-1 bg-white border border-gray-200 rounded-md shadow-sm">
+                                    <MdAttachMoney size={14} className="text-gray-400" />
+                                    <input
+                                      type="number"
+                                      step="0.01"
+                                      value={place.cost || ''}
+                                      onChange={(e) => {
+                                        const updatedPlans = dailyPlans.map(d => ({
+                                          ...d,
+                                          places: d.places.map(p =>
+                                            p.id === place.id && d.id === selectedDay
+                                              ? { ...p, cost: e.target.value }
+                                              : p
+                                          )
+                                        }));
+                                        setDailyPlans(updatedPlans);
+                                      }}
+                                      onClick={(e) => e.stopPropagation()}
+                                      className="w-20 px-2 py-1 border border-gray-100 rounded bg-slate-50 text-[12px] font-medium text-gray-800 focus:border-[#4ECDC4] focus:ring-1 focus:ring-[#4ECDC4] focus:outline-none"
+                                      placeholder="25.00"
+                                    />
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        const rect = e.currentTarget.getBoundingClientRect();
+                                        setCurrencyPickerPosition({
+                                          top: rect.bottom + 8,
+                                          left: rect.right - 180
+                                        });
+                                        setShowCurrencyPicker(showCurrencyPicker === place.id ? null : place.id);
+                                      }}
+                                      className="h-7 px-2 text-gray-600 hover:text-[#4ECDC4] transition-colors cursor-pointer text-xs font-semibold border border-gray-100 rounded bg-white"
+                                    >
+                                      {(place.currency || 'EUR') === 'EUR' && '€'}
+                                      {(place.currency || 'EUR') === 'USD' && '$'}
+                                      {(place.currency || 'EUR') === 'GBP' && '£'}
+                                      {(place.currency || 'EUR') === 'CHF' && 'CHF'}
+                                      {(place.currency || 'EUR') === 'BRL' && 'R$'}
+                                    </button>
+                                  </div>
                                 </div>
                               </div>
                             ) : (
@@ -2732,99 +2826,130 @@ const parseLocalDate = (value) => {
                                     </div>
 
                                     {/* Compact Metadata Inputs */}
-                                    <div className="flex items-center gap-2 text-xs flex-wrap">
-                                      {/* Time */}
-                                      <div className="flex items-center gap-1">
-                                        <Calendar size={14} className="text-gray-400" />
-                                        <input
-                                          type="time"
-                                          value={place.visitTime || ''}
-                                          onChange={(e) => {
-                                            const updatedPlans = dailyPlans.map(d => ({
-                                              ...d,
-                                              places: d.places.map(p =>
-                                                p.id === place.id && d.id === selectedDay
-                                                  ? { ...p, visitTime: e.target.value }
-                                                  : p
-                                              )
-                                            }));
-                                            setDailyPlans(updatedPlans);
-                                          }}
-                                          onClick={(e) => e.stopPropagation()}
-                                          className="w-16 px-1 py-0.5 border border-gray-300 rounded text-xs focus:border-[#4ECDC4] focus:outline-none"
-                                          placeholder="--:--"
-                                        />
+                                      <div className="flex items-center gap-2 text-xs flex-wrap">
+                                      {/* Start / End time (custom picker) */}
+                                      <div className="relative flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                                        <div className="flex items-center gap-1 px-2 py-1 bg-white border border-gray-200 rounded-md shadow-sm">
+                                          <IoMdTime size={14} className="text-gray-600" />
+                                          <button
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              openTimePickerAt(place.id, 'start', e.currentTarget);
+                                            }}
+                                            className="w-14 px-1.5 py-1 border border-gray-100 rounded bg-slate-50 text-[11px] font-semibold text-gray-800 hover:border-[#4ECDC4] focus:outline-none"
+                                          >
+                                            {place.startTime ? formatTimeDisplay(place.startTime) : 'Start'}
+                                          </button>
+                                          <span className="text-gray-300 text-xs">–</span>
+                                          <button
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              openTimePickerAt(place.id, 'end', e.currentTarget);
+                                            }}
+                                            className="w-14 px-1.5 py-1 border border-gray-100 rounded bg-slate-50 text-[11px] font-semibold text-gray-800 hover:border-[#4ECDC4] focus:outline-none"
+                                          >
+                                            {place.endTime ? formatTimeDisplay(place.endTime) : 'End'}
+                                          </button>
+                                        </div>
+
+                                        {openTimePicker?.placeId === place.id && (
+                                          <div
+                                            ref={timePickerRef}
+                                            className="fixed z-30 bg-white border border-gray-200 rounded-lg shadow-lg p-2 flex gap-2"
+                                            style={{ top: timePickerPosition.top, left: timePickerPosition.left }}
+                                          >
+                                            <div className="flex-1 max-h-48 overflow-y-auto border-r border-gray-100 pr-2">
+                                              {Array.from({ length: 24 }).map((_, h) => {
+                                                const current = parseTimeParts(openTimePicker.field === 'start' ? place.startTime : place.endTime);
+                                                const isSelected = current.hour === h;
+                                                return (
+                                                  <button
+                                                    key={h}
+                                                    type="button"
+                                                    onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      handleTimeSelect(selectedDay, place.id, openTimePicker.field, buildTimeValue(h, current.minute), false);
+                                                    }}
+                                                    className={`w-full text-left px-3 py-1 text-[11px] rounded hover:bg-gray-50 ${
+                                                      isSelected ? 'bg-[#4ECDC4]/10 text-[#0b6559] font-semibold' : 'text-gray-700'
+                                                    }`}
+                                                  >
+                                                    {formatTimeDisplay(`${String(h).padStart(2, '0')}:00`)}
+                                                  </button>
+                                                );
+                                              })}
+                                            </div>
+                                            <div className="flex-1 max-h-48 overflow-y-auto">
+                                              {[0, 15, 30, 45].map((m) => {
+                                                const current = parseTimeParts(openTimePicker.field === 'start' ? place.startTime : place.endTime);
+                                                const isSelected = current.minute === m;
+                                                return (
+                                                  <button
+                                                    key={m}
+                                                    type="button"
+                                                    onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      handleTimeSelect(selectedDay, place.id, openTimePicker.field, buildTimeValue(current.hour, m), true);
+                                                    }}
+                                                    className={`w-full text-left px-3 py-1 text-[11px] rounded hover:bg-gray-50 ${
+                                                      isSelected ? 'bg-[#4ECDC4]/10 text-[#0b6559] font-semibold' : 'text-gray-700'
+                                                    }`}
+                                                  >
+                                                    {String(m).padStart(2, '0')}m
+                                                  </button>
+                                                );
+                                              })}
+                                            </div>
+                                          </div>
+                                        )}
                                       </div>
 
-                                      <span className="text-gray-300">|</span>
+                                        <span className="text-gray-300">|</span>
 
-                                      {/* Duration */}
-                                      <div className="flex items-center gap-1">
-                                        <TbTimeDuration30 size={14} className="text-gray-400" />
-                                        <input
-                                          type="number"
-                                          step="0.5"
-                                          value={place.duration || ''}
-                                          onChange={(e) => {
-                                            const updatedPlans = dailyPlans.map(d => ({
-                                              ...d,
-                                              places: d.places.map(p =>
-                                                p.id === place.id && d.id === selectedDay
-                                                  ? { ...p, duration: e.target.value }
-                                                  : p
-                                              )
-                                            }));
-                                            setDailyPlans(updatedPlans);
-                                          }}
-                                          onClick={(e) => e.stopPropagation()}
-                                          className="w-12 px-1 py-0.5 border border-gray-300 rounded text-xs focus:border-[#4ECDC4] focus:outline-none"
-                                          placeholder="1.5"
-                                        />
-                                        <span className="text-gray-500">h</span>
-                                      </div>
-
-                                      <span className="text-gray-300">|</span>
-
-                                      {/* Cost */}
-                                      <div className="flex items-center gap-1 relative">
-                                        <MdAttachMoney size={16} className="text-gray-400" />
-                                        <input
-                                          type="number"
-                                          step="0.01"
-                                          value={place.cost || ''}
-                                          onChange={(e) => {
-                                            const updatedPlans = dailyPlans.map(d => ({
-                                              ...d,
-                                              places: d.places.map(p =>
-                                                p.id === place.id && d.id === selectedDay
-                                                  ? { ...p, cost: e.target.value }
-                                                  : p
-                                              )
-                                            }));
-                                            setDailyPlans(updatedPlans);
-                                          }}
-                                          onClick={(e) => e.stopPropagation()}
-                                          className="w-16 px-1 py-0.5 border border-gray-300 rounded text-xs focus:border-[#4ECDC4] focus:outline-none"
-                                          placeholder="25.00"
-                                        />
-                                        <button
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            const rect = e.currentTarget.getBoundingClientRect();
-                                            setCurrencyPickerPosition({
-                                              top: rect.bottom + 8,
-                                              left: rect.right - 180
-                                            });
-                                            setShowCurrencyPicker(showCurrencyPicker === place.id ? null : place.id);
-                                          }}
-                                          className="text-gray-500 hover:text-[#4ECDC4] transition-colors cursor-pointer text-xs font-medium"
-                                        >
-                                          {(place.currency || 'EUR') === 'EUR' && '€'}
-                                          {(place.currency || 'EUR') === 'USD' && '$'}
-                                          {(place.currency || 'EUR') === 'GBP' && '£'}
-                                          {(place.currency || 'EUR') === 'CHF' && 'CHF'}
-                                          {(place.currency || 'EUR') === 'BRL' && 'R$'}
-                                        </button>
+                                        {/* Cost */}
+                                        <div className="flex items-center gap-1 relative">
+                                          <div className="flex items-center gap-1 px-2 py-1 bg-white border border-gray-200 rounded-md shadow-sm">
+                                            <MdAttachMoney size={14} className="text-gray-500" />
+                                            <input
+                                              type="number"
+                                              step="0.01"
+                                              value={place.cost || ''}
+                                              onChange={(e) => {
+                                                const updatedPlans = dailyPlans.map((d) => ({
+                                                  ...d,
+                                                  places: d.places.map((p) =>
+                                                    p.id === place.id && d.id === selectedDay
+                                                      ? { ...p, cost: e.target.value }
+                                                      : p
+                                                  )
+                                                }));
+                                                setDailyPlans(updatedPlans);
+                                              }}
+                                              onClick={(e) => e.stopPropagation()}
+                                              className="w-20 px-2 py-1 border border-gray-100 rounded bg-slate-50 text-[11px] font-semibold text-gray-800 focus:border-[#4ECDC4] focus:ring-1 focus:ring-[#4ECDC4] focus:outline-none"
+                                              placeholder="25.00"
+                                            />
+                                            <button
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                const rect = e.currentTarget.getBoundingClientRect();
+                                                setCurrencyPickerPosition({
+                                                  top: rect.bottom + 8,
+                                                  left: rect.right - 180
+                                                });
+                                                setShowCurrencyPicker(showCurrencyPicker === place.id ? null : place.id);
+                                              }}
+                                              className="px-2 py-1 text-gray-700 hover:text-[#0b6559] hover:border-[#4ECDC4] transition-colors cursor-pointer text-[11px] font-semibold border border-gray-100 rounded bg-white"
+                                            >
+                                              {(place.currency || 'EUR') === 'EUR' && '€'}
+                                              {(place.currency || 'EUR') === 'USD' && '$'}
+                                              {(place.currency || 'EUR') === 'GBP' && '£'}
+                                              {(place.currency || 'EUR') === 'CHF' && 'CHF'}
+                                              {(place.currency || 'EUR') === 'BRL' && 'R$'}
+                                            </button>
+                                          </div>
 
                                         {/* Currency Picker Popup */}
                                         {showCurrencyPicker === place.id && (
@@ -3157,7 +3282,9 @@ const parseLocalDate = (value) => {
                                 notes: '',
                                 transportMode: 'walking',
                                 transportTime: '',
-                                distance: ''
+                                distance: '',
+                                startTime: '',
+                                endTime: ''
                               });
                               setPlaceSearchTerm('');
                               setPlaceSuggestions([]);
