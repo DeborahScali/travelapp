@@ -545,7 +545,11 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
     arrivalTime: '',
     bookingRef: '',
     price: '',
-    priceCurrency: 'USD'
+    priceCurrency: 'USD',
+    isRoundTrip: false,
+    returnDate: '',
+    returnDepartureTime: '',
+    returnArrivalTime: ''
   });
   const [flightInputMode, setFlightInputMode] = useState('manual'); // manual | pdf | image
   const [flightDocPreview, setFlightDocPreview] = useState(null);
@@ -597,7 +601,8 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
     arrivalTime: payload.arrivalTime || '',
     bookingRef: payload.bookingRef || '',
     price: payload.price || payload.value || '',
-    priceCurrency: payload.priceCurrency || payload.currency || parseCurrencyFromPrice(payload.price || payload.value) || 'USD'
+    priceCurrency: payload.priceCurrency || payload.currency || parseCurrencyFromPrice(payload.price || payload.value) || 'USD',
+    segments: payload.segments || []
   });
 
   const readFileAsBase64 = (file) => new Promise((resolve, reject) => {
@@ -639,7 +644,7 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
 
     const model = (import.meta.env.VITE_GEMINI_MODEL || 'gemini-2.5-flash-lite').trim();
     const apiVersion = (import.meta.env.VITE_GEMINI_API_VERSION || 'v1').trim(); // v1beta can also be used
-    const prompt = 'Extract flight details from this ticket. Return ONLY a JSON object with keys: airline, flightNumber, from (departure airport), to (arrival airport), departureDate (YYYY-MM-DD), arrivalDate (YYYY-MM-DD), departureTime (24h HH:MM), arrivalTime (24h HH:MM), bookingRef, price (numeric or string with currency), priceCurrency (3-letter ISO like USD/EUR/GBP). Use empty strings when data is missing.';
+    const prompt = 'Extract flight details from this ticket. Support round trips. Return ONLY a JSON object. Keys: airline, flightNumber, bookingRef, price, priceCurrency. Include "segments" as an array; each segment object must have from, to, departureDate (YYYY-MM-DD), arrivalDate (YYYY-MM-DD), departureTime (24h HH:MM), arrivalTime (24h HH:MM). If it is round trip, include two segments (outbound first, return second). Use empty strings when data is missing.';
     const response = await fetch(`https://generativelanguage.googleapis.com/${apiVersion}/models/${model}:generateContent?key=${apiKey}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -688,10 +693,31 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
     try {
       const base64Data = await readFileAsBase64(file);
       const extracted = await extractFlightWithGemini({ base64Data, mimeType: file.type });
-      setFlightForm(prev => ({
-        ...prev,
-        ...extracted
-      }));
+      const segments = Array.isArray(extracted.segments) ? extracted.segments : [];
+      if (segments.length >= 2) {
+        const outbound = normalizeFlightPayload({ ...extracted, ...segments[0] });
+        const ret = normalizeFlightPayload({ ...extracted, ...segments[1] });
+        setFlightForm(prev => ({
+          ...prev,
+          ...outbound,
+          isRoundTrip: true,
+          returnDate: ret.departureDate || ret.date || '',
+          returnDepartureTime: ret.departureTime || '',
+          returnArrivalTime: ret.arrivalTime || '',
+          to: outbound.to || ret.from || prev.to,
+          from: outbound.from || prev.from
+        }));
+      } else {
+        const single = normalizeFlightPayload(extracted);
+        setFlightForm(prev => ({
+          ...prev,
+          ...single,
+          isRoundTrip: false,
+          returnDate: '',
+          returnDepartureTime: '',
+          returnArrivalTime: ''
+        }));
+      }
     } catch (error) {
       console.error('Flight extraction failed:', error);
       setFlightExtractError(error.message || 'Unable to extract details. Please fill the form manually.');
@@ -727,7 +753,11 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
       arrivalTime: '',
       bookingRef: '',
       price: '',
-      priceCurrency: 'USD'
+      priceCurrency: 'USD',
+      isRoundTrip: false,
+      returnDate: '',
+      returnDepartureTime: '',
+      returnArrivalTime: ''
     });
     setFlightDocPreview(null);
     setFlightImagePreview('');
@@ -737,13 +767,39 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
   };
 
   const handleAddFlight = async () => {
-    const newFlight = {
-      id: Date.now(),
+    const baseId = Date.now();
+    const outboundFlight = {
+      id: baseId,
       ...flightForm,
-      date: flightForm.departureDate || flightForm.date || ''
+      date: flightForm.departureDate || flightForm.date || '',
+      groupId: flightForm.isRoundTrip ? baseId : null,
+      leg: 'outbound'
     };
+    const returnFlight = flightForm.isRoundTrip && flightForm.returnDate
+      ? {
+          ...flightForm,
+          id: baseId + 1,
+          airline: flightForm.airline,
+          flightNumber: `${flightForm.flightNumber || ''}`.trim() ? `${flightForm.flightNumber}-R` : '',
+          from: flightForm.to,
+          to: flightForm.from,
+          departureDate: flightForm.returnDate,
+          arrivalDate: flightForm.returnDate,
+          date: flightForm.returnDate,
+          departureTime: flightForm.returnDepartureTime,
+          arrivalTime: flightForm.returnArrivalTime,
+          bookingRef: flightForm.bookingRef,
+          price: '',
+          priceCurrency: flightForm.priceCurrency,
+          groupId: baseId,
+          leg: 'return'
+        }
+      : null;
     try {
-      await saveFlight(newFlight);
+      await saveFlight(outboundFlight);
+      if (returnFlight) {
+        await saveFlight(returnFlight);
+      }
       resetFlightCaptureState();
       setShowAddFlight(false);
     } catch (error) {
@@ -2074,10 +2130,23 @@ const renderExpenseIcon = (category, size = 14) => {
   }, []);
 
   // Analytics calculations
-  const getFlightsTotal = () => flights.reduce((sum, flight) => {
-    const amount = parsePriceValue(flight.price);
-    return sum + convertAmountToBase(amount, flight.priceCurrency || 'EUR');
-  }, 0);
+  const getFlightsTotal = () => {
+    const grouped = new Map();
+    let total = 0;
+    flights.forEach(flight => {
+      const amount = parsePriceValue(flight.price);
+      if (!amount) return;
+      if (flight.groupId) {
+        if (!grouped.has(flight.groupId)) {
+          grouped.set(flight.groupId, true);
+          total += convertAmountToBase(amount, flight.priceCurrency || 'EUR');
+        }
+      } else {
+        total += convertAmountToBase(amount, flight.priceCurrency || 'EUR');
+      }
+    });
+    return total;
+  };
 
   const getPlaceCostsTotal = () => dailyPlans.reduce(
     (sum, day) => sum + day.places.reduce((acc, place) => acc + convertAmountToBase(parsePriceValue(place.cost), place.currency || 'EUR'), 0),
@@ -3941,6 +4010,14 @@ const renderExpenseIcon = (category, size = 14) => {
                                 • {formatFlightPrice(flight.price, flight.priceCurrency)}
                               </span>
                             )}
+                            {flight.groupId && (
+                              <div className="mt-1 inline-flex items-center gap-2 px-2 py-1 rounded-full bg-[#4ECDC4]/10 text-[#0b6559] text-xs font-semibold">
+                                Round trip
+                                <span className="px-2 py-[2px] bg-white/70 rounded border border-[#4ECDC4]/40">
+                                  {flight.leg === 'return' ? 'Return' : 'Outbound'}
+                                </span>
+                              </div>
+                            )}
                           </div>
                         </div>
                         <button
@@ -4143,6 +4220,42 @@ const renderExpenseIcon = (category, size = 14) => {
                         />
                       </div>
 
+                      <div className="border border-gray-200 rounded-lg p-3 bg-gray-50">
+                        <label className="flex items-center gap-2 text-sm font-semibold text-gray-800 mb-3">
+                          <input
+                            type="checkbox"
+                            checked={flightForm.isRoundTrip}
+                            onChange={(e) => setFlightForm({ ...flightForm, isRoundTrip: e.target.checked })}
+                          />
+                          Add return flight
+                        </label>
+                        {flightForm.isRoundTrip && (
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <input
+                              type="date"
+                              value={flightForm.returnDate}
+                              onChange={(e) => setFlightForm({ ...flightForm, returnDate: e.target.value })}
+                              className="px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#4ECDC4] focus:border-[#4ECDC4] transition"
+                              placeholder="Return date"
+                            />
+                            <input
+                              type="time"
+                              value={flightForm.returnDepartureTime}
+                              onChange={(e) => setFlightForm({ ...flightForm, returnDepartureTime: e.target.value })}
+                              className="px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#4ECDC4] focus:border-[#4ECDC4] transition"
+                              placeholder="Return departure"
+                            />
+                            <input
+                              type="time"
+                              value={flightForm.returnArrivalTime}
+                              onChange={(e) => setFlightForm({ ...flightForm, returnArrivalTime: e.target.value })}
+                              className="px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#4ECDC4] focus:border-[#4ECDC4] transition"
+                              placeholder="Return arrival"
+                            />
+                          </div>
+                        )}
+                      </div>
+
                       <div className="flex flex-col sm:flex-row gap-3">
                         <button
                           onClick={handleAddFlight}
@@ -4234,14 +4347,37 @@ const renderExpenseIcon = (category, size = 14) => {
                 )}
               </div>
 
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <h4 className="font-semibold text-gray-800">Added expenses</h4>
-                  {expenses.length === 0 ? (
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <h4 className="font-semibold text-gray-800">Added expenses</h4>
+                  {expenses.length === 0 && flights.filter(f => parsePriceValue(f.price) > 0).length === 0 ? (
                     <div className="text-sm text-gray-500">No expenses added yet.</div>
                   ) : (
                     <div className="space-y-2">
-                      {[...expenses]
+                      {(() => {
+                        const flightExpenses = [];
+                        const seenGroups = new Set();
+                        flights.forEach(f => {
+                          const amount = parsePriceValue(f.price);
+                          if (!amount) return;
+                          if (f.groupId) {
+                            if (seenGroups.has(f.groupId)) return;
+                            seenGroups.add(f.groupId);
+                          }
+                          flightExpenses.push({
+                            id: `flight-${f.id}`,
+                            description: `${f.airline || 'Flight'} ${f.flightNumber || ''}`.trim() || 'Flight',
+                            category: 'flight',
+                            amount,
+                            currency: f.priceCurrency || 'USD',
+                            date: f.departureDate || f.date,
+                            city: f.from || '',
+                            country: '',
+                            leg: f.leg
+                          });
+                        });
+
+                        return [...expenses, ...flightExpenses]
                         .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0))
                         .map(expense => (
                           <div key={expense.id} className="border border-gray-200 rounded-lg p-2 bg-white hover:shadow-sm transition">
@@ -4267,16 +4403,19 @@ const renderExpenseIcon = (category, size = 14) => {
                                 <div className="text-sm font-bold text-[#F7B731]">
                                   {expense.currency || 'USD'} ${parseFloat(expense.amount || 0).toFixed(2)}
                                 </div>
-                                <button
-                                  onClick={() => handleDeleteExpense(expense.id)}
-                                  className="text-red-600 hover:text-red-700 text-[11px]"
-                                >
-                                  Delete
-                                </button>
+                                {expense.category !== 'flight' && expense._source !== 'place' && (
+                                  <button
+                                    onClick={() => handleDeleteExpense(expense.id)}
+                                    className="text-red-600 hover:text-red-700 text-[11px]"
+                                  >
+                                    Delete
+                                  </button>
+                                )}
                               </div>
                             </div>
                           </div>
-                        ))}
+                        ));
+                      })()}
                     </div>
                   )}
                 </div>
