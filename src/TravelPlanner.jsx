@@ -2202,20 +2202,19 @@ const parseLocalDate = (value) => {
                         {index > 0 && insertingAtIndex === index && (
                           <div className="my-2" ref={insertMenuRef}>
                             {!selectedAddType && (
-                              <div className="absolute left-1/2 -translate-x-1/2 z-20 w-64 bg-white rounded-xl shadow-2xl border border-gray-200 p-2">
+                              <div className="absolute left-1/2 -translate-x-1/2 z-20 w-56 bg-white rounded-xl shadow-2xl border border-gray-200 p-2">
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     setSelectedAddType('place');
                                   }}
-                                  className="w-full px-3 py-2 hover:bg-gray-50 transition-colors flex items-center gap-3 rounded-lg"
+                                  className="w-full px-2.5 py-1.5 hover:bg-gray-50 transition-colors flex items-center gap-2 rounded-lg"
                                 >
-                                  <div className="w-9 h-9 rounded-lg bg-blue-100 flex items-center justify-center text-blue-600">
-                                    <Building size={16} />
+                                  <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center text-blue-600">
+                                    <Building size={14} />
                                   </div>
                                   <div className="text-left">
-                                    <div className="font-semibold text-sm text-gray-900">Place / Attraction</div>
-                                    <div className="text-xs text-gray-500">Museums, landmarks, parks</div>
+                                    <div className="font-semibold text-sm text-gray-900 leading-tight">Place / Attraction</div>
                                   </div>
                                 </button>
                                 <button
@@ -2223,14 +2222,13 @@ const parseLocalDate = (value) => {
                                     e.stopPropagation();
                                     setSelectedAddType('restaurant');
                                   }}
-                                  className="w-full px-3 py-2 hover:bg-gray-50 transition-colors flex items-center gap-3 rounded-lg"
+                                  className="w-full px-2.5 py-1.5 hover:bg-gray-50 transition-colors flex items-center gap-2 rounded-lg"
                                 >
-                                  <div className="w-9 h-9 rounded-lg bg-orange-100 flex items-center justify-center text-orange-600">
-                                    <FaUtensils size={14} />
+                                  <div className="w-8 h-8 rounded-lg bg-orange-100 flex items-center justify-center text-orange-600">
+                                    <FaUtensils size={13} />
                                   </div>
                                   <div className="text-left">
-                                    <div className="font-semibold text-sm text-gray-900">Restaurant</div>
-                                    <div className="text-xs text-gray-500">Places to eat</div>
+                                    <div className="font-semibold text-sm text-gray-900 leading-tight">Restaurant</div>
                                   </div>
                                 </button>
                                 <button
@@ -2238,14 +2236,13 @@ const parseLocalDate = (value) => {
                                     e.stopPropagation();
                                     setSelectedAddType('cafe');
                                   }}
-                                  className="w-full px-3 py-2 hover:bg-gray-50 transition-colors flex items-center gap-3 rounded-lg"
+                                  className="w-full px-2.5 py-1.5 hover:bg-gray-50 transition-colors flex items-center gap-2 rounded-lg"
                                 >
-                                  <div className="w-9 h-9 rounded-lg bg-amber-100 flex items-center justify-center text-amber-700">
-                                    <Coffee size={16} />
+                                  <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center text-amber-700">
+                                    <Coffee size={14} />
                                   </div>
                                   <div className="text-left">
-                                    <div className="font-semibold text-sm text-gray-900">Café / Bar</div>
-                                    <div className="text-xs text-gray-500">Coffee shops, bars</div>
+                                    <div className="font-semibold text-sm text-gray-900 leading-tight">Café / Bar</div>
                                   </div>
                                 </button>
                                 <button
@@ -2253,14 +2250,13 @@ const parseLocalDate = (value) => {
                                     e.stopPropagation();
                                     setSelectedAddType('activity');
                                   }}
-                                  className="w-full px-3 py-2 hover:bg-gray-50 transition-colors flex items-center gap-3 rounded-lg"
+                                  className="w-full px-2.5 py-1.5 hover:bg-gray-50 transition-colors flex items-center gap-2 rounded-lg"
                                 >
-                                  <div className="w-9 h-9 rounded-lg bg-green-100 flex items-center justify-center text-green-600">
-                                    <Camera size={16} />
+                                  <div className="w-8 h-8 rounded-lg bg-green-100 flex items-center justify-center text-green-600">
+                                    <Camera size={14} />
                                   </div>
                                   <div className="text-left">
-                                    <div className="font-semibold text-sm text-gray-900">Activity</div>
-                                    <div className="text-xs text-gray-500">Tours, experiences</div>
+                                    <div className="font-semibold text-sm text-gray-900 leading-tight">Activity</div>
                                   </div>
                                 </button>
                                 <button
@@ -2268,14 +2264,13 @@ const parseLocalDate = (value) => {
                                     e.stopPropagation();
                                     setSelectedAddType('note');
                                   }}
-                                  className="w-full px-3 py-2 hover:bg-gray-50 transition-colors flex items-center gap-3 rounded-lg"
+                                  className="w-full px-2.5 py-1.5 hover:bg-gray-50 transition-colors flex items-center gap-2 rounded-lg"
                                 >
-                                  <div className="w-9 h-9 rounded-lg bg-purple-100 flex items-center justify-center text-purple-600">
-                                    <StickyNote size={16} />
+                                  <div className="w-8 h-8 rounded-lg bg-purple-100 flex items-center justify-center text-purple-600">
+                                    <StickyNote size={14} />
                                   </div>
                                   <div className="text-left">
-                                    <div className="font-semibold text-sm text-gray-900">Note</div>
-                                    <div className="text-xs text-gray-500">Quick reminder or note</div>
+                                    <div className="font-semibold text-sm text-gray-900 leading-tight">Note</div>
                                   </div>
                                 </button>
                               </div>
@@ -2923,7 +2918,6 @@ const parseLocalDate = (value) => {
                               </div>
                               <div className="text-left">
                                 <div className="font-semibold text-sm text-gray-900">Place / Attraction</div>
-                                <div className="text-xs text-gray-500">Museums, landmarks, parks</div>
                               </div>
                             </button>
 
@@ -2939,7 +2933,6 @@ const parseLocalDate = (value) => {
                               </div>
                               <div className="text-left">
                                 <div className="font-semibold text-sm text-gray-900">Restaurant</div>
-                                <div className="text-xs text-gray-500">Places to eat</div>
                               </div>
                             </button>
 
@@ -2955,7 +2948,6 @@ const parseLocalDate = (value) => {
                               </div>
                               <div className="text-left">
                                 <div className="font-semibold text-sm text-gray-900">Café / Bar</div>
-                                <div className="text-xs text-gray-500">Coffee shops, bars</div>
                               </div>
                             </button>
 
@@ -2971,7 +2963,6 @@ const parseLocalDate = (value) => {
                               </div>
                               <div className="text-left">
                                 <div className="font-semibold text-sm text-gray-900">Activity</div>
-                                <div className="text-xs text-gray-500">Tours, experiences</div>
                               </div>
                             </button>
 
@@ -2987,7 +2978,6 @@ const parseLocalDate = (value) => {
                               </div>
                               <div className="text-left">
                                 <div className="font-semibold text-sm text-gray-900">Note</div>
-                                <div className="text-xs text-gray-500">Quick reminder or note</div>
                               </div>
                             </button>
                           </div>
