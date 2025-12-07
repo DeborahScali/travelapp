@@ -7,7 +7,7 @@ import { FaWalking, FaSubway, FaCar, FaUtensils, FaMapMarkerAlt, FaMapMarkedAlt 
 import { FaStar, FaLocationPin } from 'react-icons/fa6';
 import { TbTimeDuration30 } from 'react-icons/tb';
 import { MdAttachMoney, MdDragIndicator } from 'react-icons/md';
-import { IoIosAddCircle } from 'react-icons/io';
+import { IoIosAddCircle, IoIosArrowBack, IoIosArrowForward } from 'react-icons/io';
 import { useAuth } from './contexts/AuthContext';
 import { useTrips, useCurrentTrip, useFlights, useDailyPlans, useExpenses } from './hooks/useFirestore';
 
@@ -128,6 +128,7 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
   const userMenuRef = useRef(null);
   const addMenuRef = useRef(null);
   const insertMenuRef = useRef(null);
+  const dayChipsRef = useRef(null);
   const [editingDayTitle, setEditingDayTitle] = useState(false);
   const [dayTitleValue, setDayTitleValue] = useState('');
   const [tripForm, setTripForm] = useState({
@@ -141,6 +142,13 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
   const selectedDayData = useMemo(() => {
     return dailyPlans.find(d => d.id === selectedDay);
   }, [dailyPlans, selectedDay]);
+
+  const scrollDayChips = (direction) => {
+    const container = dayChipsRef.current;
+    if (!container) return;
+    const scrollAmount = container.clientWidth * 0.8;
+    container.scrollBy({ left: direction === 'left' ? -scrollAmount : scrollAmount, behavior: 'smooth' });
+  };
 
   // Create a stable reference for map dependencies
   const mapDependencyKey = useMemo(() => {
@@ -1870,24 +1878,48 @@ const parseLocalDate = (value) => {
                 </div>
 
                 {/* Day Selector */}
-                <div className="flex items-center gap-2 overflow-x-auto pb-3">
-                    {dailyPlans.map((day, index) => {
-                    return (
-                      <button
-                        key={day.id}
-                        onClick={() => setSelectedDay(day.id)}
-                        className={`flex-shrink-0 px-3 py-2 rounded-lg border transition-all ${
-                          selectedDay === day.id
-                            ? 'border-[#FF6B6B] bg-gradient-to-br from-[#FF6B6B]/10 to-[#FFE66D]/10 text-[#FF6B6B] shadow-sm'
-                            : 'border-gray-200 hover:border-[#FF6B6B]/40 hover:bg-gray-50'
-                        }`}
+                <div className="bg-white/70 border border-gray-100 rounded-2xl px-3 py-3 shadow-sm">
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => scrollDayChips('left')}
+                      className="h-10 w-10 flex items-center justify-center rounded-full border border-gray-200 text-gray-600 hover:text-[#FF6B6B] hover:border-[#FF6B6B]/40 bg-white shadow-sm transition-all hover:-translate-y-0.5"
+                      title="Previous days"
+                    >
+                      <IoIosArrowBack size={18} />
+                    </button>
+                    <div className="relative flex-1 overflow-hidden">
+                      <div
+                        ref={dayChipsRef}
+                        className="flex items-center gap-2 px-2 scroll-smooth overflow-x-auto"
+                        style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch' }}
                       >
-                        <div className="text-xs font-medium">{parseLocalDate(day.date).toLocaleDateString('en-US', { weekday: 'short' })}</div>
-                        <div className="text-xs text-gray-600">{parseLocalDate(day.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
-                      </button>
-                    );
-                  })}
-              </div>
+                          {dailyPlans.map((day, index) => {
+                          return (
+                            <button
+                              key={day.id}
+                              onClick={() => setSelectedDay(day.id)}
+                              className={`flex-shrink-0 px-3.5 py-2 rounded-xl text-sm font-semibold transition-all shadow-sm ${
+                                selectedDay === day.id
+                                  ? 'bg-[#FF6B6B] text-white shadow-md scale-[1.03]'
+                                  : 'bg-white/90 border border-gray-200 text-gray-700 hover:border-[#FF6B6B]/40 hover:text-[#FF6B6B] hover:-translate-y-0.5'
+                              }`}
+                            >
+                              <div className="text-[11px] uppercase tracking-wide">{parseLocalDate(day.date).toLocaleDateString('en-US', { weekday: 'short' })}</div>
+                              <div className="text-xs text-gray-600">{parseLocalDate(day.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => scrollDayChips('right')}
+                      className="h-10 w-10 flex items-center justify-center rounded-full border border-gray-200 text-gray-600 hover:text-[#FF6B6B] hover:border-[#FF6B6B]/40 bg-white shadow-sm transition-all hover:-translate-y-0.5"
+                      title="Next days"
+                    >
+                      <IoIosArrowForward size={18} />
+                    </button>
+                  </div>
+                </div>
 
               {selectedDayData && (
                 <div className="rounded-2xl border border-gray-100 shadow-md overflow-hidden bg-white">
