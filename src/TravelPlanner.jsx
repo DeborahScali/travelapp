@@ -1318,37 +1318,63 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
         : null;
 
       const handleMarker = (pos) => {
+        const pinPath = 'M384 192c0 87.4-117 243-168.3 307.2c-12.3 15.3-35.1 15.3-47.4 0C117 435 0 279.4 0 192C0 86 86 0 192 0S384 86 384 192z';
         const canUseAdvanced = !!googleMapsMapId && window.google?.maps?.marker?.AdvancedMarkerElement;
         let marker;
 
         if (canUseAdvanced) {
-          // Custom content bubble to mimic label numbers
-          const labelEl = document.createElement('div');
-          labelEl.style.display = 'flex';
-          labelEl.style.alignItems = 'center';
-          labelEl.style.justifyContent = 'center';
-          labelEl.style.width = '32px';
-          labelEl.style.height = '32px';
-          labelEl.style.borderRadius = '999px';
-          labelEl.style.background = '#FF6B6B';
-          labelEl.style.color = 'white';
-          labelEl.style.fontWeight = '700';
-          labelEl.style.fontSize = '13px';
-          labelEl.style.boxShadow = '0 6px 18px rgba(0,0,0,0.18)';
-          labelEl.textContent = `${index + 1}`;
+          // Build DOM content with FaLocationPin shape + numeric badge
+          const wrapper = document.createElement('div');
+          wrapper.style.position = 'relative';
+          wrapper.style.width = '40px';
+          wrapper.style.height = '52px';
+          wrapper.style.display = 'flex';
+          wrapper.style.alignItems = 'center';
+          wrapper.style.justifyContent = 'center';
+
+          const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+          svg.setAttribute('viewBox', '0 0 384 512');
+          svg.setAttribute('width', '40');
+          svg.setAttribute('height', '52');
+          const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+          path.setAttribute('d', pinPath);
+          path.setAttribute('fill', '#FF6B6B');
+          svg.appendChild(path);
+          wrapper.appendChild(svg);
+
+          const num = document.createElement('div');
+          num.textContent = `${index + 1}`;
+          num.style.position = 'absolute';
+          num.style.top = '16px';
+          num.style.left = '50%';
+          num.style.transform = 'translateX(-50%)';
+          num.style.color = 'white';
+          num.style.fontWeight = '700';
+          num.style.fontSize = '13px';
+          num.style.textShadow = '0 1px 4px rgba(0,0,0,0.35)';
+          wrapper.appendChild(num);
 
           marker = new window.google.maps.marker.AdvancedMarkerElement({
             map: mapInstanceRef.current,
             position: pos,
             title: place.name || place.address || 'Place',
-            content: labelEl
+            content: wrapper
           });
         } else {
           // Fallback to classic marker (no Map ID required)
+          const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="52" viewBox="0 0 384 512"><path fill="%23FF6B6B" d="${pinPath}"/></svg>`;
+          const iconUrl = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+
           marker = new window.google.maps.Marker({
             map: mapInstanceRef.current,
             position: pos,
             title: place.name || place.address || 'Place',
+            icon: {
+              url: iconUrl,
+              scaledSize: new window.google.maps.Size(32, 44),
+              anchor: new window.google.maps.Point(16, 44),
+              labelOrigin: new window.google.maps.Point(16, 18)
+            },
             label: {
               text: `${index + 1}`,
               color: 'white',
