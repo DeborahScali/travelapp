@@ -60,7 +60,7 @@ const getCitiesList = (countries = null) => {
     );
 };
 
-const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {} }) => {
+const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMode = () => {} }) => {
   // Authentication
   const { currentUser, signOut } = useAuth();
 
@@ -1644,6 +1644,16 @@ const parseLocalDate = (value) => {
                 title="Back to trip setup"
               >
                 <ArrowLeft size={20} className="text-white" />
+              </button>
+
+              {/* Day Mode button */}
+              <button
+                onClick={onEnterDayMode}
+                className="px-4 py-2 bg-white/20 hover:bg-white/30 rounded-full flex items-center gap-2 transition-all hover:shadow-lg border border-white/30 backdrop-blur-sm"
+                title="Switch to Day Mode"
+              >
+                <Calendar size={18} className="text-white" />
+                <span className="text-white font-medium text-sm hidden sm:inline">Day Mode</span>
               </button>
 
               {/* Avatar-only button that opens a user menu with Setup API, Account Settings and Sign Out */}

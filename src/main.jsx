@@ -1,6 +1,7 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import TravelPlanner from './TravelPlanner.jsx'
+import DayOfTripMode from './components/DayMode/DayOfTripMode.jsx'
 import Login from './components/Login.jsx'
 import TripSetup from './components/TripSetup.jsx'
 import { AuthProvider, useAuth } from './contexts/AuthContext.jsx'
@@ -14,6 +15,7 @@ const App = () => {
   const { saveTrip } = useTrips();
   const [createdTrip, setCreatedTrip] = React.useState(null);
   const [forceSetup, setForceSetup] = React.useState(false);
+  const [appMode, setAppMode] = React.useState('planning'); // 'planning' or 'dayMode'
 
   // Show loading spinner while checking authentication
   if (authLoading || (currentUser && tripLoading)) {
@@ -68,14 +70,17 @@ const App = () => {
     // reflected it yet, show the TravelPlanner with the createdTrip as
     // an initial value so the app continues immediately.
     if (createdTrip && !forceSetup) {
-      return (
+      return appMode === 'planning' ? (
         <TravelPlanner
           initialTrip={createdTrip}
           onExitTrip={() => {
             setCreatedTrip(null);
             setForceSetup(true);
           }}
+          onEnterDayMode={() => setAppMode('dayMode')}
         />
+      ) : (
+        <DayOfTripMode onExitDayMode={() => setAppMode('planning')} />
       );
     }
 
@@ -102,14 +107,17 @@ const App = () => {
     );
   }
 
-  // Authenticated with trip - show TravelPlanner
-  return (
+  // Authenticated with trip - show TravelPlanner or DayOfTripMode
+  return appMode === 'planning' ? (
     <TravelPlanner
       onExitTrip={() => {
         setCreatedTrip(null);
         setForceSetup(true);
       }}
+      onEnterDayMode={() => setAppMode('dayMode')}
     />
+  ) : (
+    <DayOfTripMode onExitDayMode={() => setAppMode('planning')} />
   );
 };
 
