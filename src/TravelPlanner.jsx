@@ -1970,7 +1970,7 @@ const parseLocalDate = (value) => {
                 </div>
 
               {selectedDayData && (
-                <div className="rounded-2xl border border-gray-100 shadow-md overflow-hidden bg-white">
+                <div className="rounded-2xl border border-gray-100 shadow-md overflow-visible bg-white">
                   {/* Day Info */}
                   <div className="p-4 sm:p-5 border-b border-gray-100 bg-white">
                     <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -2202,16 +2202,16 @@ const parseLocalDate = (value) => {
                         {index > 0 && insertingAtIndex === index && (
                           <div className="my-2" ref={insertMenuRef}>
                             {!selectedAddType && (
-                              <div className="absolute z-20 w-64 bg-white rounded-xl shadow-xl border-2 border-gray-200 overflow-hidden">
+                              <div className="absolute left-1/2 -translate-x-1/2 z-20 w-64 bg-white rounded-xl shadow-2xl border border-gray-200 p-2">
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     setSelectedAddType('place');
                                   }}
-                                  className="w-full px-3 py-2 hover:bg-gray-50 transition-colors flex items-center gap-2 border-b border-gray-100"
+                                  className="w-full px-3 py-2 hover:bg-gray-50 transition-colors flex items-center gap-3 rounded-lg"
                                 >
-                                  <div className="w-8 h-8 rounded-lg bg-blue-500 flex items-center justify-center">
-                                    <Building size={16} className="text-white" />
+                                  <div className="w-9 h-9 rounded-lg bg-blue-100 flex items-center justify-center text-blue-600">
+                                    <Building size={16} />
                                   </div>
                                   <div className="text-left">
                                     <div className="font-semibold text-sm text-gray-900">Place / Attraction</div>
@@ -2223,10 +2223,10 @@ const parseLocalDate = (value) => {
                                     e.stopPropagation();
                                     setSelectedAddType('restaurant');
                                   }}
-                                  className="w-full px-3 py-2 hover:bg-gray-50 transition-colors flex items-center gap-2 border-b border-gray-100"
+                                  className="w-full px-3 py-2 hover:bg-gray-50 transition-colors flex items-center gap-3 rounded-lg"
                                 >
-                                  <div className="w-8 h-8 rounded-lg bg-orange-500 flex items-center justify-center">
-                                    <FaUtensils size={14} className="text-white" />
+                                  <div className="w-9 h-9 rounded-lg bg-orange-100 flex items-center justify-center text-orange-600">
+                                    <FaUtensils size={14} />
                                   </div>
                                   <div className="text-left">
                                     <div className="font-semibold text-sm text-gray-900">Restaurant</div>
@@ -2238,10 +2238,10 @@ const parseLocalDate = (value) => {
                                     e.stopPropagation();
                                     setSelectedAddType('cafe');
                                   }}
-                                  className="w-full px-3 py-2 hover:bg-gray-50 transition-colors flex items-center gap-2 border-b border-gray-100"
+                                  className="w-full px-3 py-2 hover:bg-gray-50 transition-colors flex items-center gap-3 rounded-lg"
                                 >
-                                  <div className="w-8 h-8 rounded-lg bg-amber-600 flex items-center justify-center">
-                                    <Coffee size={16} className="text-white" />
+                                  <div className="w-9 h-9 rounded-lg bg-amber-100 flex items-center justify-center text-amber-700">
+                                    <Coffee size={16} />
                                   </div>
                                   <div className="text-left">
                                     <div className="font-semibold text-sm text-gray-900">Café / Bar</div>
@@ -2253,10 +2253,10 @@ const parseLocalDate = (value) => {
                                     e.stopPropagation();
                                     setSelectedAddType('activity');
                                   }}
-                                  className="w-full px-3 py-2 hover:bg-gray-50 transition-colors flex items-center gap-2 border-b border-gray-100"
+                                  className="w-full px-3 py-2 hover:bg-gray-50 transition-colors flex items-center gap-3 rounded-lg"
                                 >
-                                  <div className="w-8 h-8 rounded-lg bg-green-500 flex items-center justify-center">
-                                    <Camera size={16} className="text-[#4ECDC4]" />
+                                  <div className="w-9 h-9 rounded-lg bg-green-100 flex items-center justify-center text-green-600">
+                                    <Camera size={16} />
                                   </div>
                                   <div className="text-left">
                                     <div className="font-semibold text-sm text-gray-900">Activity</div>
@@ -2268,10 +2268,10 @@ const parseLocalDate = (value) => {
                                     e.stopPropagation();
                                     setSelectedAddType('note');
                                   }}
-                                  className="w-full px-3 py-2 hover:bg-gray-50 transition-colors flex items-center gap-2"
+                                  className="w-full px-3 py-2 hover:bg-gray-50 transition-colors flex items-center gap-3 rounded-lg"
                                 >
-                                  <div className="w-8 h-8 rounded-lg bg-purple-500 flex items-center justify-center">
-                                    <StickyNote size={16} className="text-white" />
+                                  <div className="w-9 h-9 rounded-lg bg-purple-100 flex items-center justify-center text-purple-600">
+                                    <StickyNote size={16} />
                                   </div>
                                   <div className="text-left">
                                     <div className="font-semibold text-sm text-gray-900">Note</div>
@@ -2910,19 +2910,19 @@ const parseLocalDate = (value) => {
 
                         {/* Dropdown Menu */}
                         {showAddMenu && (
-                          <div className="absolute z-10 w-full mt-2 bg-white rounded-xl shadow-xl border-2 border-gray-200 overflow-hidden">
+                          <div className="absolute left-1/2 -translate-x-1/2 z-10 w-72 mt-2 bg-white rounded-xl shadow-2xl border border-gray-200 p-2">
                             <button
                               onClick={() => {
                                 setSelectedAddType('place');
                                 setShowAddMenu(false);
                               }}
-                              className="w-full px-4 py-3 hover:bg-gray-50 transition-colors flex items-center gap-3 border-b border-gray-100"
+                              className="w-full px-3 py-2 hover:bg-gray-50 transition-colors flex items-center gap-3 rounded-lg"
                             >
-                              <div className="w-10 h-10 rounded-lg bg-blue-500 flex items-center justify-center">
-                                <Building size={20} className="text-white" />
+                              <div className="w-9 h-9 rounded-lg bg-blue-100 flex items-center justify-center text-blue-600">
+                                <Building size={18} />
                               </div>
                               <div className="text-left">
-                                <div className="font-semibold text-gray-900">Place / Attraction</div>
+                                <div className="font-semibold text-sm text-gray-900">Place / Attraction</div>
                                 <div className="text-xs text-gray-500">Museums, landmarks, parks</div>
                               </div>
                             </button>
@@ -2932,13 +2932,13 @@ const parseLocalDate = (value) => {
                                 setSelectedAddType('restaurant');
                                 setShowAddMenu(false);
                               }}
-                              className="w-full px-4 py-3 hover:bg-gray-50 transition-colors flex items-center gap-3 border-b border-gray-100"
+                              className="w-full px-3 py-2 hover:bg-gray-50 transition-colors flex items-center gap-3 rounded-lg"
                             >
-                              <div className="w-10 h-10 rounded-lg bg-orange-500 flex items-center justify-center">
-                                <FaUtensils size={18} className="text-white" />
+                              <div className="w-9 h-9 rounded-lg bg-orange-100 flex items-center justify-center text-orange-600">
+                                <FaUtensils size={16} />
                               </div>
                               <div className="text-left">
-                                <div className="font-semibold text-gray-900">Restaurant</div>
+                                <div className="font-semibold text-sm text-gray-900">Restaurant</div>
                                 <div className="text-xs text-gray-500">Places to eat</div>
                               </div>
                             </button>
@@ -2948,13 +2948,13 @@ const parseLocalDate = (value) => {
                                 setSelectedAddType('cafe');
                                 setShowAddMenu(false);
                               }}
-                              className="w-full px-4 py-3 hover:bg-gray-50 transition-colors flex items-center gap-3 border-b border-gray-100"
+                              className="w-full px-3 py-2 hover:bg-gray-50 transition-colors flex items-center gap-3 rounded-lg"
                             >
-                              <div className="w-10 h-10 rounded-lg bg-amber-600 flex items-center justify-center">
-                                <Coffee size={20} className="text-white" />
+                              <div className="w-9 h-9 rounded-lg bg-amber-100 flex items-center justify-center text-amber-700">
+                                <Coffee size={18} />
                               </div>
                               <div className="text-left">
-                                <div className="font-semibold text-gray-900">Café / Bar</div>
+                                <div className="font-semibold text-sm text-gray-900">Café / Bar</div>
                                 <div className="text-xs text-gray-500">Coffee shops, bars</div>
                               </div>
                             </button>
@@ -2964,13 +2964,13 @@ const parseLocalDate = (value) => {
                                 setSelectedAddType('activity');
                                 setShowAddMenu(false);
                               }}
-                              className="w-full px-4 py-3 hover:bg-gray-50 transition-colors flex items-center gap-3 border-b border-gray-100"
+                              className="w-full px-3 py-2 hover:bg-gray-50 transition-colors flex items-center gap-3 rounded-lg"
                             >
-                              <div className="w-10 h-10 rounded-lg bg-green-500 flex items-center justify-center">
-                                <Camera size={20} className="text-white" />
+                              <div className="w-9 h-9 rounded-lg bg-green-100 flex items-center justify-center text-green-600">
+                                <Camera size={18} />
                               </div>
                               <div className="text-left">
-                                <div className="font-semibold text-gray-900">Activity</div>
+                                <div className="font-semibold text-sm text-gray-900">Activity</div>
                                 <div className="text-xs text-gray-500">Tours, experiences</div>
                               </div>
                             </button>
@@ -2980,13 +2980,13 @@ const parseLocalDate = (value) => {
                                 setSelectedAddType('note');
                                 setShowAddMenu(false);
                               }}
-                              className="w-full px-4 py-3 hover:bg-gray-50 transition-colors flex items-center gap-3"
+                              className="w-full px-3 py-2 hover:bg-gray-50 transition-colors flex items-center gap-3 rounded-lg"
                             >
-                              <div className="w-10 h-10 rounded-lg bg-purple-500 flex items-center justify-center">
-                                <StickyNote size={20} className="text-white" />
+                              <div className="w-9 h-9 rounded-lg bg-purple-100 flex items-center justify-center text-purple-600">
+                                <StickyNote size={18} />
                               </div>
                               <div className="text-left">
-                                <div className="font-semibold text-gray-900">Note</div>
+                                <div className="font-semibold text-sm text-gray-900">Note</div>
                                 <div className="text-xs text-gray-500">Quick reminder or note</div>
                               </div>
                             </button>
