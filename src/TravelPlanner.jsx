@@ -1866,65 +1866,75 @@ const parseLocalDate = (value) => {
           {activeTab === 'itinerary' && (
             <div className={`grid gap-4 items-start ${showMapPanel ? 'grid-cols-1 lg:grid-cols-[60%_40%]' : 'grid-cols-1'}`}>
               <div className="space-y-6">
-                <div className="flex items-center justify-between flex-wrap gap-3">
-                  <h2 className="text-base font-semibold text-gray-700">Itinerary</h2>
-                  <button
-                    onClick={() => setShowMapPanel(prev => !prev)}
-                    className="p-2 text-gray-600 hover:text-[#4ECDC4] transition-colors"
-                    title={showMapPanel ? 'Hide Map' : 'Show Map'}
-                  >
-                    <FaMapMarkedAlt size={20} />
-                  </button>
-                </div>
-
-                {/* Day Selector */}
-                <div className="bg-white/70 border border-gray-100 rounded-2xl px-3 py-3 shadow-sm">
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => scrollDayChips('left')}
-                      className="h-10 w-10 flex items-center justify-center rounded-full border border-gray-200 text-gray-600 hover:text-[#FF6B6B] hover:border-[#FF6B6B]/40 bg-white shadow-sm transition-all hover:-translate-y-0.5"
-                      title="Previous days"
-                    >
-                      <IoIosArrowBack size={18} />
-                    </button>
-                    <div className="relative flex-1 overflow-hidden">
-                      <div
-                        ref={dayChipsRef}
-                        className="flex items-center gap-2 px-2 scroll-smooth overflow-x-auto"
-                        style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch' }}
-                      >
-                          {dailyPlans.map((day, index) => {
-                          return (
-                            <button
-                              key={day.id}
-                              onClick={() => setSelectedDay(day.id)}
-                              className={`flex-shrink-0 px-3.5 py-2 rounded-xl text-sm font-semibold transition-all shadow-sm ${
-                                selectedDay === day.id
-                                  ? 'bg-[#FF6B6B] text-white shadow-md scale-[1.03]'
-                                  : 'bg-white/90 border border-gray-200 text-gray-700 hover:border-[#FF6B6B]/40 hover:text-[#FF6B6B] hover:-translate-y-0.5'
-                              }`}
-                            >
-                              <div className="text-[11px] uppercase tracking-wide">{parseLocalDate(day.date).toLocaleDateString('en-US', { weekday: 'short' })}</div>
-                              <div className="text-xs text-gray-600">{parseLocalDate(day.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
-                            </button>
-                          );
-                        })}
+                <div className="rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden">
+                  <div className="flex items-center justify-between flex-wrap gap-3 px-4 py-3">
+                    <div className="flex items-center gap-3">
+                      <div className="h-10 w-10 rounded-full bg-[#FF6B6B] flex items-center justify-center text-white shadow-sm">
+                        <Calendar size={18} className="text-white" />
+                      </div>
+                      <div className="flex flex-col leading-tight">
+                        <span className="text-base font-semibold text-gray-800">Itinerary</span>
+                        <span className="text-xs text-gray-500">Your daily plan</span>
                       </div>
                     </div>
                     <button
-                      onClick={() => scrollDayChips('right')}
-                      className="h-10 w-10 flex items-center justify-center rounded-full border border-gray-200 text-gray-600 hover:text-[#FF6B6B] hover:border-[#FF6B6B]/40 bg-white shadow-sm transition-all hover:-translate-y-0.5"
-                      title="Next days"
+                      onClick={() => setShowMapPanel(prev => !prev)}
+                      className="h-10 w-10 flex items-center justify-center rounded-full border border-gray-200 text-gray-600 hover:text-[#4ECDC4] hover:border-[#4ECDC4]/40 bg-white shadow-sm transition-all hover:-translate-y-0.5"
+                      title={showMapPanel ? 'Hide Map' : 'Show Map'}
                     >
-                      <IoIosArrowForward size={18} />
+                      <FaMapMarkedAlt size={18} />
                     </button>
+                  </div>
+
+                  {/* Day Selector */}
+                  <div className="border-t border-gray-100 px-3 py-3 bg-white/60">
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => scrollDayChips('left')}
+                        className="h-10 w-10 flex items-center justify-center rounded-full border border-gray-200 text-gray-600 hover:text-[#FF6B6B] hover:border-[#FF6B6B]/40 bg-white shadow-sm transition-all hover:-translate-y-0.5"
+                        title="Previous days"
+                      >
+                        <IoIosArrowBack size={18} />
+                      </button>
+                      <div className="relative flex-1 overflow-hidden">
+                        <div
+                          ref={dayChipsRef}
+                          className="flex items-center gap-2 px-2 scroll-smooth overflow-x-auto"
+                          style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch' }}
+                        >
+                            {dailyPlans.map((day, index) => {
+                            return (
+                              <button
+                                key={day.id}
+                                onClick={() => setSelectedDay(day.id)}
+                                className={`flex-shrink-0 px-3.5 py-2 rounded-xl text-sm font-semibold transition-all shadow-sm ${
+                                  selectedDay === day.id
+                                  ? 'bg-[#FF6B6B] text-white shadow-md scale-[1.03]'
+                                  : 'bg-white border border-gray-200 text-gray-700 hover:border-[#FF6B6B]/40 hover:text-[#FF6B6B] hover:-translate-y-0.5'
+                                }`}
+                              >
+                                <div className="text-[11px] uppercase tracking-wide">{parseLocalDate(day.date).toLocaleDateString('en-US', { weekday: 'short' })}</div>
+                                <div className="text-xs text-gray-600">{parseLocalDate(day.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => scrollDayChips('right')}
+                        className="h-10 w-10 flex items-center justify-center rounded-full border border-gray-200 text-gray-600 hover:text-[#FF6B6B] hover:border-[#FF6B6B]/40 bg-white shadow-sm transition-all hover:-translate-y-0.5"
+                        title="Next days"
+                      >
+                        <IoIosArrowForward size={18} />
+                      </button>
+                    </div>
                   </div>
                 </div>
 
               {selectedDayData && (
                 <div className="rounded-2xl border border-gray-100 shadow-md overflow-hidden bg-white">
                   {/* Day Info */}
-                  <div className="p-4 sm:p-5 border-b border-gray-100 bg-gradient-to-r from-white to-[#FF6B6B]/5">
+                  <div className="p-4 sm:p-5 border-b border-gray-100 bg-white">
                     <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                       <div className="flex items-start gap-3">
                         <div className="hidden sm:block w-1 self-stretch bg-[#FF6B6B] rounded-full opacity-80"></div>
