@@ -1959,157 +1959,161 @@ const parseLocalDate = (value) => {
                       <React.Fragment key={place.id}>
                         {/* Transportation Info - Between places */}
                         {!place.visited && index > 0 && (
-                          <div className="flex items-center justify-between py-1">
-                            {/* Insert Button - Left Side */}
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setInsertingAtIndex(insertingAtIndex === index ? null : index);
-                              }}
-                              className="text-teal-500 hover:text-teal-600 transition-colors cursor-pointer"
-                              title="Add place here"
-                            >
-                              <IoIosAddCircle size={28} />
-                            </button>
+                          <div className="relative py-3">
+                            {/* Transport summary left, aligned with place card */}
+                            <div className="ml-[3.25rem] flex justify-start">
+                              <div className="relative">
+                                {/* Compact single-line display */}
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setChangingTransportMode(
+                                      changingTransportMode?.dayId === selectedDay && changingTransportMode?.placeId === place.id
+                                        ? null
+                                        : { dayId: selectedDay, placeId: place.id }
+                                    );
+                                  }}
+                                  className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#4ECDC4]/5 hover:bg-[#4ECDC4]/10 border border-[#4ECDC4]/20 hover:border-[#4ECDC4]/40 transition-all cursor-pointer text-xs"
+                                >
+                                  {/* Icon */}
+                                  {place.transportMode === 'walking' && <FaWalking size={14} className="text-[#4ECDC4]" />}
+                                  {place.transportMode === 'car' && <FaCar size={14} className="text-[#4ECDC4]" />}
+                                  {place.transportMode === 'transit' && <FaSubway size={14} className="text-[#4ECDC4]" />}
+                                  {place.transportMode === 'plane' && <Plane size={14} className="text-[#4ECDC4]" />}
+                                  {/* Legacy support */}
+                                  {(place.transportMode === 'bus' || place.transportMode === 'metro' || place.transportMode === 'train') && <FaSubway size={14} className="text-[#4ECDC4]" />}
 
-                            <div className="relative">
-                              {/* Compact single-line display */}
+                                  {/* Time */}
+                                  {!place.isAutoCalculated && editingManualDistance?.dayId === selectedDay && editingManualDistance?.placeId === place.id && editingManualDistance?.field === 'time' ? (
+                                    <input
+                                      type="number"
+                                      value={editingManualDistance.value}
+                                      onChange={(e) => setEditingManualDistance({ ...editingManualDistance, value: e.target.value })}
+                                      onBlur={() => {
+                                        const updatedPlans = dailyPlans.map(d => ({
+                                          ...d,
+                                          places: d.places.map(p =>
+                                            p.id === place.id && d.id === selectedDay
+                                              ? { ...p, transportTime: editingManualDistance.value, isAutoCalculated: false }
+                                              : p
+                                          )
+                                        }));
+                                        setDailyPlans(updatedPlans);
+                                        setEditingManualDistance(null);
+                                      }}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter') e.target.blur();
+                                        if (e.key === 'Escape') setEditingManualDistance(null);
+                                        e.stopPropagation();
+                                      }}
+                                      onClick={(e) => e.stopPropagation()}
+                                      autoFocus
+                                      className="w-10 px-1 font-semibold text-gray-700 bg-white rounded border border-[#4ECDC4] outline-none"
+                                    />
+                                  ) : (
+                                    <span
+                                      onClick={(e) => {
+                                        if (!place.isAutoCalculated) {
+                                          e.stopPropagation();
+                                          setEditingManualDistance({ dayId: selectedDay, placeId: place.id, field: 'time', value: place.transportTime || '' });
+                                        }
+                                      }}
+                                      className={`font-semibold ${
+                                        place.isAutoCalculated ? 'text-gray-700' : 'text-gray-600'
+                                      }`}
+                                    >
+                                      {place.transportTime || '--'} min
+                                    </span>
+                                  )}
+
+                                  <span className="text-gray-400">|</span>
+
+                                  {/* Distance */}
+                                  {!place.isAutoCalculated && editingManualDistance?.dayId === selectedDay && editingManualDistance?.placeId === place.id && editingManualDistance?.field === 'distance' ? (
+                                    <input
+                                      type="number"
+                                      step="0.1"
+                                      value={editingManualDistance.value}
+                                      onChange={(e) => setEditingManualDistance({ ...editingManualDistance, value: e.target.value })}
+                                      onBlur={() => {
+                                        const updatedPlans = dailyPlans.map(d => ({
+                                          ...d,
+                                          places: d.places.map(p =>
+                                            p.id === place.id && d.id === selectedDay
+                                              ? { ...p, distance: editingManualDistance.value, isAutoCalculated: false }
+                                              : p
+                                          )
+                                        }));
+                                        setDailyPlans(updatedPlans);
+                                        setEditingManualDistance(null);
+                                      }}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter') e.target.blur();
+                                        if (e.key === 'Escape') setEditingManualDistance(null);
+                                        e.stopPropagation();
+                                      }}
+                                      onClick={(e) => e.stopPropagation()}
+                                      autoFocus
+                                      className="w-10 px-1 font-semibold text-gray-700 bg-white rounded border border-[#4ECDC4] outline-none"
+                                    />
+                                  ) : (
+                                    <span
+                                      onClick={(e) => {
+                                        if (!place.isAutoCalculated) {
+                                          e.stopPropagation();
+                                          setEditingManualDistance({ dayId: selectedDay, placeId: place.id, field: 'distance', value: place.distance || '' });
+                                        }
+                                      }}
+                                      className={`font-semibold ${
+                                        place.isAutoCalculated ? 'text-gray-700' : 'text-gray-600'
+                                      }`}
+                                    >
+                                      {place.distance ? `${place.distance} km` : (place.transportTime ? '-- km' : '--')}
+                                    </span>
+                                  )}
+
+                                  <ChevronDown size={12} className="text-gray-400" />
+                                </button>
+                                {/* Dropdown Menu */}
+                                {changingTransportMode?.dayId === selectedDay && changingTransportMode?.placeId === place.id && (
+                                  <div className="absolute top-full left-0 mt-1 bg-white rounded-lg shadow-xl border border-gray-200 z-50 min-w-[140px]">
+                                    {['walking', 'car', 'transit', 'plane'].map((mode, idx, arr) => (
+                                      <button
+                                        key={mode}
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.preventDefault();
+                                          e.stopPropagation();
+                                          handleChangeTransportMode(selectedDay, place.id, mode);
+                                        }}
+                                        className={`w-full flex items-center gap-2 px-3 py-2 hover:bg-gray-50 transition-colors ${
+                                          place.transportMode === mode ? 'bg-[#4ECDC4]/10' : ''
+                                        } ${idx === 0 ? 'rounded-t-lg' : ''} ${idx === arr.length - 1 ? 'rounded-b-lg' : ''}`}
+                                      >
+                                        {mode === 'walking' && <FaWalking size={16} className="text-[#4ECDC4]" />}
+                                        {mode === 'car' && <FaCar size={16} className="text-[#4ECDC4]" />}
+                                        {mode === 'transit' && <FaSubway size={16} className="text-[#4ECDC4]" />}
+                                        {mode === 'plane' && <Plane size={16} className="text-[#4ECDC4]" />}
+                                        <span className="text-sm font-medium text-gray-700">{mode === 'transit' ? 'Transport' : mode.charAt(0).toUpperCase() + mode.slice(1)}</span>
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Centered Insert Button */}
+                            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  setChangingTransportMode(
-                                    changingTransportMode?.dayId === selectedDay && changingTransportMode?.placeId === place.id
-                                      ? null
-                                      : { dayId: selectedDay, placeId: place.id }
-                                  );
+                                  setInsertingAtIndex(insertingAtIndex === index ? null : index);
                                 }}
-                                className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#4ECDC4]/5 hover:bg-[#4ECDC4]/10 border border-[#4ECDC4]/20 hover:border-[#4ECDC4]/40 transition-all cursor-pointer text-xs"
+                                className="text-teal-500 hover:text-teal-600 transition-colors cursor-pointer pointer-events-auto"
+                                title="Add place here"
                               >
-                                {/* Icon */}
-                                {place.transportMode === 'walking' && <FaWalking size={14} className="text-[#4ECDC4]" />}
-                                {place.transportMode === 'car' && <FaCar size={14} className="text-[#4ECDC4]" />}
-                                {place.transportMode === 'transit' && <FaSubway size={14} className="text-[#4ECDC4]" />}
-                                {place.transportMode === 'plane' && <Plane size={14} className="text-[#4ECDC4]" />}
-                                {/* Legacy support */}
-                                {(place.transportMode === 'bus' || place.transportMode === 'metro' || place.transportMode === 'train') && <FaSubway size={14} className="text-[#4ECDC4]" />}
-
-                                {/* Time */}
-                                {!place.isAutoCalculated && editingManualDistance?.dayId === selectedDay && editingManualDistance?.placeId === place.id && editingManualDistance?.field === 'time' ? (
-                                  <input
-                                    type="number"
-                                    value={editingManualDistance.value}
-                                    onChange={(e) => setEditingManualDistance({ ...editingManualDistance, value: e.target.value })}
-                                    onBlur={() => {
-                                      const updatedPlans = dailyPlans.map(d => ({
-                                        ...d,
-                                        places: d.places.map(p =>
-                                          p.id === place.id && d.id === selectedDay
-                                            ? { ...p, transportTime: editingManualDistance.value, isAutoCalculated: false }
-                                            : p
-                                        )
-                                      }));
-                                      setDailyPlans(updatedPlans);
-                                      setEditingManualDistance(null);
-                                    }}
-                                    onKeyDown={(e) => {
-                                      if (e.key === 'Enter') e.target.blur();
-                                      if (e.key === 'Escape') setEditingManualDistance(null);
-                                      e.stopPropagation();
-                                    }}
-                                    onClick={(e) => e.stopPropagation()}
-                                    autoFocus
-                                    className="w-10 px-1 font-semibold text-gray-700 bg-white rounded border border-[#4ECDC4] outline-none"
-                                  />
-                                ) : (
-                                  <span
-                                    onClick={(e) => {
-                                      if (!place.isAutoCalculated) {
-                                        e.stopPropagation();
-                                        setEditingManualDistance({ dayId: selectedDay, placeId: place.id, field: 'time', value: place.transportTime || '' });
-                                      }
-                                    }}
-                                    className={`font-semibold ${
-                                      place.isAutoCalculated ? 'text-gray-700' : 'text-gray-600'
-                                    }`}
-                                  >
-                                    {place.transportTime || '--'} min
-                                  </span>
-                                )}
-
-                                <span className="text-gray-400">|</span>
-
-                                {/* Distance */}
-                                {!place.isAutoCalculated && editingManualDistance?.dayId === selectedDay && editingManualDistance?.placeId === place.id && editingManualDistance?.field === 'distance' ? (
-                                  <input
-                                    type="number"
-                                    step="0.1"
-                                    value={editingManualDistance.value}
-                                    onChange={(e) => setEditingManualDistance({ ...editingManualDistance, value: e.target.value })}
-                                    onBlur={() => {
-                                      const updatedPlans = dailyPlans.map(d => ({
-                                        ...d,
-                                        places: d.places.map(p =>
-                                          p.id === place.id && d.id === selectedDay
-                                            ? { ...p, distance: editingManualDistance.value, isAutoCalculated: false }
-                                            : p
-                                        )
-                                      }));
-                                      setDailyPlans(updatedPlans);
-                                      setEditingManualDistance(null);
-                                    }}
-                                    onKeyDown={(e) => {
-                                      if (e.key === 'Enter') e.target.blur();
-                                      if (e.key === 'Escape') setEditingManualDistance(null);
-                                      e.stopPropagation();
-                                    }}
-                                    onClick={(e) => e.stopPropagation()}
-                                    autoFocus
-                                    className="w-10 px-1 font-semibold text-gray-700 bg-white rounded border border-[#4ECDC4] outline-none"
-                                  />
-                                ) : (
-                                  <span
-                                    onClick={(e) => {
-                                      if (!place.isAutoCalculated) {
-                                        e.stopPropagation();
-                                        setEditingManualDistance({ dayId: selectedDay, placeId: place.id, field: 'distance', value: place.distance || '' });
-                                      }
-                                    }}
-                                    className={`font-semibold ${
-                                      place.isAutoCalculated ? 'text-gray-700' : 'text-gray-600'
-                                    }`}
-                                  >
-                                    {place.distance ? `${place.distance} km` : (place.transportTime ? '-- km' : '--')}
-                                  </span>
-                                )}
-
-                                <ChevronDown size={12} className="text-gray-400" />
+                                <IoIosAddCircle size={28} />
                               </button>
-
-                              {/* Dropdown Menu */}
-                              {changingTransportMode?.dayId === selectedDay && changingTransportMode?.placeId === place.id && (
-                                <div className="absolute top-full left-0 mt-1 bg-white rounded-lg shadow-xl border border-gray-200 z-50 min-w-[140px]">
-                                  {['walking', 'car', 'transit', 'plane'].map((mode, idx, arr) => (
-                                    <button
-                                      key={mode}
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.preventDefault();
-                                        e.stopPropagation();
-                                        handleChangeTransportMode(selectedDay, place.id, mode);
-                                      }}
-                                      className={`w-full flex items-center gap-2 px-3 py-2 hover:bg-gray-50 transition-colors ${
-                                        place.transportMode === mode ? 'bg-[#4ECDC4]/10' : ''
-                                      } ${idx === 0 ? 'rounded-t-lg' : ''} ${idx === arr.length - 1 ? 'rounded-b-lg' : ''}`}
-                                    >
-                                      {mode === 'walking' && <FaWalking size={16} className="text-[#4ECDC4]" />}
-                                      {mode === 'car' && <FaCar size={16} className="text-[#4ECDC4]" />}
-                                      {mode === 'transit' && <FaSubway size={16} className="text-[#4ECDC4]" />}
-                                      {mode === 'plane' && <Plane size={16} className="text-[#4ECDC4]" />}
-                                      <span className="text-sm font-medium text-gray-700">{mode === 'transit' ? 'Transport' : mode.charAt(0).toUpperCase() + mode.slice(1)}</span>
-                                    </button>
-                                  ))}
-                                </div>
-                              )}
                             </div>
                           </div>
                         )}
