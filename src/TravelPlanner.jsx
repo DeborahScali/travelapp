@@ -869,35 +869,68 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
     try {
       await waitForGoogleMaps();
 
-      // Use new AutocompleteSuggestion API
-      const { suggestions } = await window.google.maps.places.AutocompleteSuggestion.fetchAutocompleteSuggestions({
-        input: query,
-        includedPrimaryTypes: ['tourist_attraction', 'museum', 'restaurant', 'park', 'point_of_interest'],
-      });
+      const hasNewAutocomplete = !!window.google.maps.places?.AutocompleteSuggestion?.fetchAutocompleteSuggestions;
+      let predictions = [];
 
-      // Convert new format to match old format for compatibility
-      const predictions = await Promise.all(suggestions.map(async (s) => {
-        const pred = s.placePrediction;
-        const base = {
-          place_id: pred.placeId,
-          description: pred.text?.toString() || '',
-          structured_formatting: {
-            main_text: pred.structuredFormat?.mainText?.toString() || pred.text?.toString() || '',
-            secondary_text: pred.structuredFormat?.secondaryText?.toString() || ''
+      if (hasNewAutocomplete) {
+        // New AutocompleteSuggestion API
+        const { suggestions } = await window.google.maps.places.AutocompleteSuggestion.fetchAutocompleteSuggestions({
+          input: query,
+          includedPrimaryTypes: ['tourist_attraction', 'museum', 'restaurant', 'park', 'point_of_interest'],
+        });
+
+        predictions = await Promise.all(suggestions.map(async (s) => {
+          const pred = s.placePrediction;
+          const base = {
+            place_id: pred.placeId,
+            description: pred.text?.toString() || '',
+            structured_formatting: {
+              main_text: pred.structuredFormat?.mainText?.toString() || pred.text?.toString() || '',
+              secondary_text: pred.structuredFormat?.secondaryText?.toString() || ''
+            }
+          };
+
+          // Try to attach a small preview photo for the suggestion
+          try {
+            const place = new window.google.maps.places.Place({ id: pred.placeId });
+            await place.fetchFields({ fields: ['photos'] });
+            const photoUrl = getPhotoUrl(place.photos, 160);
+            return { ...base, photoUrl };
+          } catch (err) {
+            console.warn('Failed to fetch photo for suggestion', pred.placeId, err);
+            return base;
           }
-        };
+        }));
+      } else {
+        // Legacy AutocompleteService fallback
+        const service = new window.google.maps.places.AutocompleteService();
+        const legacyPredictions = await new Promise((resolve, reject) => {
+          service.getPlacePredictions(
+            {
+              input: query,
+              types: ['tourist_attraction', 'restaurant', 'park', 'point_of_interest']
+            },
+            (results, status) => {
+              if (status === window.google.maps.places.PlacesServiceStatus.OK && results) {
+                resolve(results);
+              } else if (status === window.google.maps.places.PlacesServiceStatus.ZERO_RESULTS) {
+                resolve([]);
+              } else {
+                reject(new Error(status));
+              }
+            }
+          );
+        });
 
-        // Try to attach a small preview photo for the suggestion
-        try {
-          const place = new window.google.maps.places.Place({ id: pred.placeId });
-          await place.fetchFields({ fields: ['photos'] });
-          const photoUrl = getPhotoUrl(place.photos, 160);
-          return { ...base, photoUrl };
-        } catch (err) {
-          console.warn('Failed to fetch photo for suggestion', pred.placeId, err);
-          return base;
-        }
-      }));
+        predictions = legacyPredictions.map(pred => ({
+          place_id: pred.place_id,
+          description: pred.description || '',
+          structured_formatting: {
+            main_text: pred.structured_formatting?.main_text || pred.description || '',
+            secondary_text: pred.structured_formatting?.secondary_text || ''
+          }
+        }));
+      }
 
       setPlaceSuggestions(predictions);
       setPlaceSearchLoading(false);
@@ -912,30 +945,66 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
     try {
       await waitForGoogleMaps();
 
-      // Use new Place API
-      const place = new window.google.maps.places.Place({
-        id: suggestion.place_id,
-      });
+      const useNewPlaceApi = !!window.google.maps.places?.Place;
+      let placeData = null;
 
-      // Fetch place details
-      await place.fetchFields({
-        fields: ['displayName', 'formattedAddress', 'location', 'photos']
-      });
+      if (useNewPlaceApi) {
+        // Use new Place API
+        const place = new window.google.maps.places.Place({
+          id: suggestion.place_id,
+        });
 
-      const photoUrl = getPhotoUrl(place.photos, 600);
+        await place.fetchFields({
+          fields: ['displayName', 'formattedAddress', 'location', 'photos']
+        });
 
-      const placeData = {
-        name: place.displayName || placeSearchTerm,
-        address: place.formattedAddress || placeSearchTerm,
-        placeId: suggestion.place_id,
-        location: place.location ? { lat: place.location.lat(), lng: place.location.lng() } : null,
-        photoUrl: photoUrl || '',
-        notes: '',
-        transportMode: 'walking',
-        transportTime: '',
-        distance: '',
-        type: selectedAddType || 'place' // Store the type
-      };
+        const photoUrl = getPhotoUrl(place.photos, 600);
+
+        placeData = {
+          name: place.displayName || placeSearchTerm,
+          address: place.formattedAddress || placeSearchTerm,
+          placeId: suggestion.place_id,
+          location: place.location ? { lat: place.location.lat(), lng: place.location.lng() } : null,
+          photoUrl: photoUrl || '',
+          notes: '',
+          transportMode: 'walking',
+          transportTime: '',
+          distance: '',
+          type: selectedAddType || 'place'
+        };
+      } else {
+        // Legacy Place Details fallback
+        const service = new window.google.maps.places.PlacesService(document.createElement('div'));
+        const result = await new Promise((resolve, reject) => {
+          service.getDetails(
+            { placeId: suggestion.place_id, fields: ['name', 'formatted_address', 'geometry', 'photos'] },
+            (res, status) => {
+              if (status === window.google.maps.places.PlacesServiceStatus.OK && res) {
+                resolve(res);
+              } else {
+                reject(new Error(status));
+              }
+            }
+          );
+        });
+
+        const photoUrl = result.photos && result.photos.length > 0 ? result.photos[0].getUrl({ maxWidth: 600, maxHeight: 600 }) : '';
+
+        placeData = {
+          name: result.name || placeSearchTerm,
+          address: result.formatted_address || placeSearchTerm,
+          placeId: suggestion.place_id,
+          location: result.geometry?.location
+            ? { lat: result.geometry.location.lat(), lng: result.geometry.location.lng() }
+            : null,
+          photoUrl,
+          notes: '',
+          transportMode: 'walking',
+          transportTime: '',
+          distance: '',
+          type: selectedAddType || 'place'
+        };
+      }
 
       // Auto-add the place immediately
       const selectedDayData = dailyPlans.find(d => d.id === selectedDay);
@@ -2320,65 +2389,77 @@ const parseLocalDate = (value) => {
                               place.visited ? 'bg-gray-50 border-gray-300' : 'hover:shadow-md cursor-move'
                             } ${draggedItem?.placeId === place.id ? 'opacity-50' : ''}`}
                           >
-                            {/* Photo preview */}
-                            {place.photoUrl && (
-                              <div className="h-32 w-full bg-gray-100 overflow-hidden">
-                                <img
-                                  src={place.photoUrl}
-                                  alt={place.name}
-                                  className="w-full h-full object-cover"
-                                  loading="lazy"
-                                />
-                              </div>
-                            )}
-
                             {/* Place Header */}
                             <div className="p-3 sm:p-4">
-                              <div className="flex items-start gap-3">
-                                {/* Type Icon */}
-                                <div className="flex-shrink-0 mt-1">
-                                {place.type === 'place' && <div className="w-8 h-8 rounded-lg bg-blue-500 flex items-center justify-center"><Building size={16} className="text-white" /></div>}
-                                {place.type === 'restaurant' && <div className="w-8 h-8 rounded-lg bg-orange-500 flex items-center justify-center"><FaUtensils size={14} className="text-white" /></div>}
-                                {place.type === 'cafe' && <div className="w-8 h-8 rounded-lg bg-amber-600 flex items-center justify-center"><Coffee size={16} className="text-white" /></div>}
-                                {place.type === 'activity' && <div className="w-8 h-8 rounded-lg bg-green-500 flex items-center justify-center"><Camera size={16} className="text-white" /></div>}
-                                {place.type === 'note' && <div className="w-8 h-8 rounded-lg bg-purple-500 flex items-center justify-center"><StickyNote size={16} className="text-white" /></div>}
-                                {!place.type && <div className="w-8 h-8 rounded-lg bg-blue-500 flex items-center justify-center"><Building size={16} className="text-white" /></div>}
-                              </div>
-
-                              {/* Place Info */}
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 mb-2 flex-wrap">
-                                  <span className="bg-gradient-to-r from-[#FF6B6B]/10 to-[#FFE66D]/10 text-[#FF6B6B] px-2 py-1 rounded-full text-xs sm:text-sm font-medium">
-                                    #{index + 1}
-                                  </span>
-                                  <h4 className="font-bold text-base sm:text-lg">
-                                    {place.name}
-                                  </h4>
-
-                                  {/* Priority Stars */}
-                                  <div className="flex items-center gap-0.5">
-                                    {[1, 2, 3, 4, 5].map((star) => {
-                                      const currentPriority = place.priority || 0;
-                                      const isActive = star <= currentPriority;
-
-                                      return (
-                                        <button
-                                          key={star}
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            handleChangePriority(selectedDay, place.id, star);
-                                          }}
-                                          className="transition-all hover:scale-110"
-                                          title={`Priority: ${star}/5`}
-                                        >
-                                          <FaStar className={isActive ? 'text-yellow-500' : 'text-gray-300'} size={16} />
-                                        </button>
-                                      );
-                                    })}
-                                  </div>
+                              <div className="flex items-start gap-4">
+                                {/* Photo / Icon column */}
+                                <div className="flex-shrink-0">
+                                  {place.photoUrl ? (
+                                    <div className="relative w-24 h-24 rounded-xl overflow-hidden shadow-sm border border-gray-100">
+                                      <img
+                                        src={place.photoUrl}
+                                        alt={place.name}
+                                        className="w-full h-full object-cover"
+                                        loading="lazy"
+                                      />
+                                      <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-transparent" />
+                                      {place.type && place.type !== 'place' && (
+                                        <div className="absolute bottom-1 left-1">
+                                          <div className="w-8 h-8 rounded-lg bg-white/85 backdrop-blur flex items-center justify-center shadow">
+                                            {place.type === 'restaurant' && <FaUtensils size={14} className="text-orange-500" />}
+                                            {place.type === 'cafe' && <Coffee size={16} className="text-amber-600" />}
+                                            {place.type === 'activity' && <Camera size={16} className="text-green-500" />}
+                                            {place.type === 'note' && <StickyNote size={16} className="text-purple-500" />}
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  ) : (
+                                    <div className="w-12 h-12 rounded-lg bg-blue-500 flex items-center justify-center">
+                                      {place.type === 'place' && <Building size={16} className="text-white" />}
+                                      {place.type === 'restaurant' && <FaUtensils size={14} className="text-white" />}
+                                      {place.type === 'cafe' && <Coffee size={16} className="text-white" />}
+                                      {place.type === 'activity' && <Camera size={16} className="text-white" />}
+                                      {place.type === 'note' && <StickyNote size={16} className="text-white" />}
+                                      {!place.type && <Building size={16} className="text-white" />}
+                                    </div>
+                                  )}
                                 </div>
 
-                                {/* Rich Text Notes Input */}
+                                {/* Place Info */}
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 mb-2 flex-wrap">
+                                    <span className="bg-gradient-to-r from-[#FF6B6B]/10 to-[#FFE66D]/10 text-[#FF6B6B] px-2 py-1 rounded-full text-xs sm:text-sm font-medium">
+                                      #{index + 1}
+                                    </span>
+                                    <h4 className="font-bold text-base sm:text-lg">
+                                      {place.name}
+                                    </h4>
+
+                                    {/* Priority Stars */}
+                                    <div className="flex items-center gap-0.5">
+                                      {[1, 2, 3, 4, 5].map((star) => {
+                                        const currentPriority = place.priority || 0;
+                                        const isActive = star <= currentPriority;
+
+                                        return (
+                                          <button
+                                            key={star}
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleChangePriority(selectedDay, place.id, star);
+                                            }}
+                                            className="transition-all hover:scale-110"
+                                            title={`Priority: ${star}/5`}
+                                          >
+                                            <FaStar className={isActive ? 'text-yellow-500' : 'text-gray-300'} size={16} />
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+
+                                  {/* Rich Text Notes Input */}
                                 <div className="relative">
                                   {/* Formatting Toolbar */}
                                   {focusedNotesEditor === place.id && (

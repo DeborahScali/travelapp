@@ -42,67 +42,67 @@ const PlaceCard = ({ place, index, onMarkVisited, onMarkSkipped, onUpdateActualC
           : 'border-gray-100 hover:border-[#4ECDC4]/30 hover:shadow-lg'
       }`}
     >
-      {place.photoUrl && (
-        <div className="w-full h-32 overflow-hidden rounded-t-xl">
-          <img
-            src={place.photoUrl}
-            alt={place.name}
-            className="w-full h-full object-cover"
-            loading="lazy"
-          />
-        </div>
-      )}
-
       {/* Header - Always visible */}
       <div
         className="px-4 py-3 flex items-start justify-between cursor-pointer"
         onClick={() => setIsExpanded(!isExpanded)}
       >
-        <div className="flex-1">
-          <div className="flex items-start gap-3">
-            {/* Status indicator */}
-            <div className="mt-1">
-              {place.visited ? (
-                <div className="w-6 h-6 bg-[#26DE81] rounded-full flex items-center justify-center">
-                  <Check size={14} className="text-white" />
+        <div className="flex-1 flex items-start gap-3">
+          {/* Photo / badge */}
+          <div className="flex-shrink-0">
+            {place.photoUrl ? (
+              <div className="relative w-20 h-20 rounded-xl overflow-hidden border border-gray-100 shadow-sm">
+                <img
+                  src={place.photoUrl}
+                  alt={place.name}
+                  className="w-full h-full object-cover"
+                  loading="lazy"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-transparent" />
+                <div className="absolute top-1 left-1">
+                  <div className="w-6 h-6 rounded-full bg-white/85 backdrop-blur flex items-center justify-center shadow">
+                    {place.visited ? (
+                      <Check size={12} className="text-[#26DE81]" />
+                    ) : place.skipped ? (
+                      <X size={12} className="text-gray-500" />
+                    ) : (
+                      <span className="text-[10px] font-bold text-gray-600">{index + 1}</span>
+                    )}
+                  </div>
                 </div>
-              ) : place.skipped ? (
-                <div className="w-6 h-6 bg-gray-400 rounded-full flex items-center justify-center">
-                  <X size={14} className="text-white" />
-                </div>
-              ) : (
-                <div className="w-6 h-6 border-2 border-gray-300 rounded-full flex items-center justify-center text-gray-400 text-xs font-bold">
-                  {index + 1}
-                </div>
-              )}
-            </div>
+              </div>
+            ) : (
+              <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 text-xs font-bold border">
+                {place.visited ? <Check size={14} /> : place.skipped ? <X size={14} /> : index + 1}
+              </div>
+            )}
+          </div>
 
-            <div className="flex-1">
-              <h3
-                className={`font-semibold text-base mb-1 ${
-                  place.visited ? 'text-gray-700' : place.skipped ? 'text-gray-500 line-through' : 'text-gray-900'
-                }`}
-              >
-                {place.name}
-              </h3>
+          <div className="flex-1">
+            <h3
+              className={`font-semibold text-base mb-1 ${
+                place.visited ? 'text-gray-700' : place.skipped ? 'text-gray-500 line-through' : 'text-gray-900'
+              }`}
+            >
+              {place.name}
+            </h3>
 
-              {/* Quick info - always shown */}
-              {!isCompleted && (
-                <div className="flex items-center gap-2 text-xs text-gray-500">
-                  {place.transportMode && (
-                    <>
-                      {getTransportIcon(place.transportMode)}
-                      {place.transportTime && (
-                        <span>{place.transportTime} min</span>
-                      )}
-                      {place.distance && (
-                        <span>• {place.distance} km</span>
-                      )}
-                    </>
-                  )}
-                </div>
-              )}
-            </div>
+            {/* Quick info - always shown */}
+            {!isCompleted && (
+              <div className="flex items-center gap-2 text-xs text-gray-500">
+                {place.transportMode && (
+                  <>
+                    {getTransportIcon(place.transportMode)}
+                    {place.transportTime && (
+                      <span>{place.transportTime} min</span>
+                    )}
+                    {place.distance && (
+                      <span>• {place.distance} km</span>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
