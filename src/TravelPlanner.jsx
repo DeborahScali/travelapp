@@ -1105,6 +1105,17 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
     document.head.appendChild(script);
   }, [mapsApiKey]);
 
+  // Hide the default close button on InfoWindows
+  useEffect(() => {
+    if (!mapsReady) return;
+    const styleId = 'hide-gm-close-button';
+    if (document.getElementById(styleId)) return;
+    const style = document.createElement('style');
+    style.id = styleId;
+    style.innerHTML = '.gm-ui-hover-effect { display: none !important; }';
+    document.head.appendChild(style);
+  }, [mapsReady]);
+
   // Initialize map instance when panel is shown and Maps is ready
   useEffect(() => {
     if (!showMapPanel || !mapsReady || !mapRef.current) return;
@@ -1187,19 +1198,44 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
           return icons[type] || '📍';
         };
 
+        const transportIcons = { walking: '🚶', transit: '🚊', car: '🚗', plane: '✈️' };
+        const priorityStars = place.priority ? '★'.repeat(Math.min(5, place.priority)) : '';
+        const mapsLink = place.address || place.name
+          ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.address || place.name)}`
+          : '';
+
         const infoContent = `
-          <div style="max-width:280px;font-family:system-ui,-apple-system,sans-serif;">
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-              <span style="font-size:20px;">${getTypeIcon(place.type)}</span>
-              <strong style="font-size:14px;color:#333;">${place.name || 'Place'}</strong>
+          <div style="max-width:300px;font-family:system-ui,-apple-system,sans-serif;color:#1f2937;">
+            ${place.photoUrl ? `
+              <div style="overflow:hidden;border-radius:12px;margin-bottom:10px;box-shadow:0 8px 20px rgba(0,0,0,0.08);position:relative;">
+                <img src="${place.photoUrl}" alt="${place.name || 'Place photo'}" style="width:100%;height:170px;object-fit:cover;display:block;" />
+                ${place.type ? `<span style="position:absolute;left:10px;top:10px;padding:4px 10px;border-radius:999px;background:rgba(0,0,0,0.55);color:#fff;font-size:11px;display:inline-flex;align-items:center;gap:6px;">${getTypeIcon(place.type)} ${place.type.charAt(0).toUpperCase() + place.type.slice(1)}</span>` : ''}
+              </div>
+            ` : ''}
+            <div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:8px;">
+              <span style="font-size:18px;">${getTypeIcon(place.type)}</span>
+              <div style="flex:1;">
+                <strong style="font-size:15px;color:#111827;display:block;">${place.name || 'Place'}</strong>
+                ${place.address ? `<div style="color:#6b7280;font-size:12px;margin-top:2px;line-height:1.4;">${place.address}</div>` : ''}
+              </div>
+              ${priorityStars ? `<div style="background:#fff4e5;border:1px solid #fde68a;padding:4px 8px;border-radius:8px;font-size:11px;white-space:nowrap;">${priorityStars}</div>` : ''}
             </div>
-            ${place.address ? `<div style="color:#666;font-size:12px;margin-bottom:8px;">${place.address}</div>` : ''}
-            <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;font-size:11px;">
-              ${place.visitTime ? `<div style="background:#f0f0f0;padding:3px 8px;border-radius:4px;">🕐 ${place.visitTime}</div>` : ''}
-              ${place.duration ? `<div style="background:#f0f0f0;padding:3px 8px;border-radius:4px;">⏱️ ${place.duration}h</div>` : ''}
-              ${place.cost ? `<div style="background:#f0f0f0;padding:3px 8px;border-radius:4px;">💰 ${place.cost} ${getCurrencySymbol(place.currency)}</div>` : ''}
+            <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;font-size:11px;">
+              ${place.visitTime ? `<div style="background:#f3f4f6;padding:4px 8px;border-radius:6px;">🕐 ${place.visitTime}</div>` : ''}
+              ${place.duration ? `<div style="background:#f3f4f6;padding:4px 8px;border-radius:6px;">⏱️ ${place.duration}h</div>` : ''}
+              ${place.cost ? `<div style="background:#f3f4f6;padding:4px 8px;border-radius:6px;">💰 ${place.cost} ${getCurrencySymbol(place.currency)}</div>` : ''}
+              ${place.transportMode || place.distance || place.transportTime ? `
+                <div style="background:#e0f2fe;padding:4px 8px;border-radius:6px;display:flex;align-items:center;gap:6px;">
+                  <span>${transportIcons[place.transportMode] || '🧭'}</span>
+                  <span style="color:#0f172a;">
+                    ${place.transportMode ? place.transportMode.charAt(0).toUpperCase() + place.transportMode.slice(1) : 'Route'}
+                    ${place.distance ? ` • ${place.distance} km` : ''}${place.transportTime ? ` • ${place.transportTime} min` : ''}
+                  </span>
+                </div>
+              ` : ''}
             </div>
-            ${place.notes ? `<div style="margin-top:8px;padding:8px;background:#f9f9f9;border-radius:4px;font-size:12px;color:#555;font-style:italic;">${place.notes}</div>` : ''}
+            ${place.notes ? `<div style="margin-top:10px;padding:10px;background:#f9fafb;border-radius:10px;font-size:12px;color:#4b5563;line-height:1.4;">${place.notes}</div>` : ''}
+            ${mapsLink ? `<a href="${mapsLink}" target="_blank" rel="noopener noreferrer" style="display:inline-block;margin-top:10px;font-size:12px;color:#2563eb;text-decoration:none;">Open in Google Maps →</a>` : ''}
           </div>
         `;
 
