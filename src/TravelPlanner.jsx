@@ -2056,9 +2056,9 @@ const parseLocalDate = (value) => {
                       <React.Fragment key={place.id}>
                         {/* Transportation Info - Between places */}
                         {!place.visited && index > 0 && (
-                          <div className="relative py-3">
+                          <div className="relative py-1">
                             {/* Transport summary left, aligned with place card */}
-                            <div className="ml-[3.25rem] flex justify-start">
+                            <div className="ml-[2.9rem] flex justify-start">
                               <div className="relative">
                                 {/* Compact single-line display */}
                                 <button
@@ -2070,7 +2070,7 @@ const parseLocalDate = (value) => {
                                         : { dayId: selectedDay, placeId: place.id }
                                     );
                                   }}
-                                  className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#4ECDC4]/5 hover:bg-[#4ECDC4]/10 border border-[#4ECDC4]/20 hover:border-[#4ECDC4]/40 transition-all cursor-pointer text-xs"
+                                  className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-[#4ECDC4]/8 hover:bg-[#4ECDC4]/12 border border-[#4ECDC4]/25 hover:border-[#4ECDC4]/35 shadow-sm transition-all cursor-pointer text-[11px]"
                                 >
                                   {/* Icon */}
                                   {place.transportMode === 'walking' && <FaWalking size={14} className="text-[#4ECDC4]" />}
@@ -2428,7 +2428,7 @@ const parseLocalDate = (value) => {
                             } ${draggedItem?.placeId === place.id ? 'opacity-50' : ''}`}
                           >
                             {isCompactType(place.type) ? (
-                              <div className="flex items-center justify-between gap-3">
+                              <div className="relative flex items-center gap-3 pr-24">
                                 <div className="flex items-center gap-2 min-w-0">
                                   <div className="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center text-gray-700">
                                     {renderTypeIcon(place.type, 16, 'text-gray-700')}
@@ -2439,13 +2439,8 @@ const parseLocalDate = (value) => {
                                     </p>
                                   </div>
                                 </div>
-
-                                <div className="flex items-center gap-2 flex-shrink-0">
-                                  {place.cost && (
-                                    <span className="text-sm font-semibold text-gray-900 whitespace-nowrap">
-                                      {getCurrencySymbol(place.currency)}{place.cost}
-                                    </span>
-                                  )}
+                                {/* Cost + actions aligned top-right */}
+                                <div className="absolute top-1.5 right-1.5 flex items-center gap-1.5">
                                   <button
                                     onClick={(e) => {
                                       e.stopPropagation();
@@ -2464,6 +2459,52 @@ const parseLocalDate = (value) => {
                                     className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg"
                                   >
                                     <Trash2 size={16} />
+                                  </button>
+                                  {place.cost && (
+                                    <span className="text-sm font-semibold text-gray-900 whitespace-nowrap">
+                                      {getCurrencySymbol(place.currency)}{place.cost}
+                                    </span>
+                                  )}
+                                </div>
+                                {/* Cost input for compact items */}
+                                <div className="mt-2 flex items-center gap-2 text-xs text-gray-700">
+                                  <MdAttachMoney size={14} className="text-gray-400" />
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    value={place.cost || ''}
+                                    onChange={(e) => {
+                                      const updatedPlans = dailyPlans.map(d => ({
+                                        ...d,
+                                        places: d.places.map(p =>
+                                          p.id === place.id && d.id === selectedDay
+                                            ? { ...p, cost: e.target.value }
+                                            : p
+                                        )
+                                      }));
+                                      setDailyPlans(updatedPlans);
+                                    }}
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="w-20 px-2 py-1 border border-gray-300 rounded focus:border-[#4ECDC4] focus:outline-none"
+                                    placeholder="25.00"
+                                  />
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      const rect = e.currentTarget.getBoundingClientRect();
+                                      setCurrencyPickerPosition({
+                                        top: rect.bottom + 8,
+                                        left: rect.right - 180
+                                      });
+                                      setShowCurrencyPicker(showCurrencyPicker === place.id ? null : place.id);
+                                    }}
+                                    className="text-gray-500 hover:text-[#4ECDC4] transition-colors cursor-pointer text-xs font-medium"
+                                  >
+                                    {(place.currency || 'EUR') === 'EUR' && '€'}
+                                    {(place.currency || 'EUR') === 'USD' && '$'}
+                                    {(place.currency || 'EUR') === 'GBP' && '£'}
+                                    {(place.currency || 'EUR') === 'CHF' && 'CHF'}
+                                    {(place.currency || 'EUR') === 'BRL' && 'R$'}
                                   </button>
                                 </div>
                               </div>
