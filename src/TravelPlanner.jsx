@@ -2262,13 +2262,13 @@ const parseLocalDate = (value) => {
                         )}
 
                         {/* Place Card with Drag Indicator */}
-                        <div className="flex items-stretch gap-2 group relative">
+                        <div className="flex items-stretch gap-3 group relative">
                           {/* Number + drag column */}
-                          <div className="flex-shrink-0 w-9 flex flex-col items-center relative">
-                            <div className="w-8 h-8 flex items-center justify-center mb-1">
-                              <div className="relative w-8 h-8 flex items-center justify-center text-[#FF6B6B]">
-                                <FaLocationPin size={28} />
-                                <span className="absolute text-[12px] font-bold text-white top-1.5">
+                          <div className="flex-shrink-0 w-10 flex flex-col items-center relative">
+                            <div className="w-9 h-9 flex items-center justify-center mb-2">
+                              <div className="relative w-9 h-9 flex items-center justify-center text-[#FF6B6B] drop-shadow-sm">
+                                <FaLocationPin size={30} />
+                                <span className="absolute text-[13px] font-bold text-white top-1.5">
                                   {index + 1}
                                 </span>
                               </div>
@@ -2279,7 +2279,7 @@ const parseLocalDate = (value) => {
                                 className="absolute left-1/2 -translate-x-1/2 -translate-y-1/2 top-1/2 opacity-0 group-hover:opacity-100 transition-opacity"
                                 title="Drag to reorder"
                               >
-                                <MdDragIndicator size={16} className="text-gray-400 cursor-grab active:cursor-grabbing" />
+                                <MdDragIndicator size={18} className="text-gray-400 cursor-grab active:cursor-grabbing" />
                               </button>
                             )}
                           </div>
@@ -2305,17 +2305,19 @@ const parseLocalDate = (value) => {
                                 }
                               }
                             }}
-                            className={`flex-1 border rounded-lg overflow-hidden transition-all ${
-                              place.visited ? 'bg-gray-50 border-gray-300' : 'hover:shadow-md cursor-move'
+                            className={`flex-1 rounded-2xl overflow-hidden transition-all ring-1 ring-transparent ${
+                              place.visited
+                                ? 'bg-gray-50 border border-gray-200'
+                                : 'bg-white/90 border border-gray-100 shadow-sm hover:shadow-lg hover:-translate-y-0.5 hover:ring-[#FF6B6B]/15 cursor-move'
                             } ${draggedItem?.placeId === place.id ? 'opacity-50' : ''}`}
                           >
                             {/* Place Header */}
-                            <div className="p-3 sm:p-4">
+                            <div className="p-4 sm:p-5 bg-gradient-to-br from-white via-white to-[#FFE66D]/10">
                               <div className="flex items-start gap-4">
                                 {/* Photo / Icon column */}
                                 <div className="flex-shrink-0">
                                   {place.photoUrl ? (
-                                    <div className="relative w-24 h-24 rounded-xl overflow-hidden shadow-sm border border-gray-100">
+                                    <div className="relative w-24 h-24 rounded-2xl overflow-hidden shadow-md border border-gray-100">
                                       <img
                                         src={place.photoUrl}
                                         alt={place.name}
@@ -2325,7 +2327,7 @@ const parseLocalDate = (value) => {
                                       <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-transparent" />
                                       {place.type && place.type !== 'place' && (
                                         <div className="absolute bottom-1 left-1">
-                                          <div className="w-8 h-8 rounded-lg bg-white/85 backdrop-blur flex items-center justify-center shadow">
+                                          <div className="w-8 h-8 rounded-lg bg-white/90 backdrop-blur flex items-center justify-center shadow">
                                             {place.type === 'restaurant' && <FaUtensils size={14} className="text-orange-500" />}
                                             {place.type === 'cafe' && <Coffee size={16} className="text-amber-600" />}
                                             {place.type === 'activity' && <Camera size={16} className="text-green-500" />}
@@ -2335,13 +2337,13 @@ const parseLocalDate = (value) => {
                                       )}
                                     </div>
                                   ) : (
-                                    <div className="w-12 h-12 rounded-lg bg-blue-500 flex items-center justify-center">
-                                      {place.type === 'place' && <Building size={16} className="text-white" />}
-                                      {place.type === 'restaurant' && <FaUtensils size={14} className="text-white" />}
-                                      {place.type === 'cafe' && <Coffee size={16} className="text-white" />}
-                                      {place.type === 'activity' && <Camera size={16} className="text-white" />}
-                                      {place.type === 'note' && <StickyNote size={16} className="text-white" />}
-                                      {!place.type && <Building size={16} className="text-white" />}
+                                    <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#FF6B6B] to-[#FFE66D] flex items-center justify-center shadow-sm text-white">
+                                      {place.type === 'place' && <Building size={18} className="text-white" />}
+                                      {place.type === 'restaurant' && <FaUtensils size={15} className="text-white" />}
+                                      {place.type === 'cafe' && <Coffee size={17} className="text-white" />}
+                                      {place.type === 'activity' && <Camera size={17} className="text-white" />}
+                                      {place.type === 'note' && <StickyNote size={17} className="text-white" />}
+                                      {!place.type && <Building size={18} className="text-white" />}
                                     </div>
                                   )}
                                 </div>
@@ -2349,7 +2351,7 @@ const parseLocalDate = (value) => {
                                 {/* Place Info */}
                                 <div className="flex-1 min-w-0">
                                   <div className="flex items-center gap-2 mb-2 flex-wrap">
-                                    <h4 className="font-bold text-base sm:text-lg">
+                                    <h4 className="font-bold text-base sm:text-lg text-gray-900">
                                       {place.name}
                                     </h4>
 
@@ -2376,8 +2378,26 @@ const parseLocalDate = (value) => {
                                     </div>
                                   </div>
 
+                                  <div className="flex flex-wrap items-center gap-2 mb-1">
+                                    {place.duration && (
+                                      <span className="px-3 py-1 text-xs rounded-full bg-[#4ECDC4]/10 text-[#17806f] border border-[#4ECDC4]/20">
+                                        ⏱ {place.duration}h
+                                      </span>
+                                    )}
+                                    {place.cost && (
+                                      <span className="px-3 py-1 text-xs rounded-full bg-[#FF6B6B]/10 text-[#c84a4a] border border-[#FF6B6B]/20">
+                                        💰 {place.cost} {place.currency || ''}
+                                      </span>
+                                    )}
+                                    {place.visited && (
+                                      <span className="px-3 py-1 text-xs rounded-full bg-gray-800 text-white">
+                                        Completed
+                                      </span>
+                                    )}
+                                  </div>
+
                                   {/* Rich Text Notes Input */}
-                                <div className="relative">
+                                <div className="relative -mt-1">
                                   {/* Formatting Toolbar */}
                                   {focusedNotesEditor === place.id && (
                                     <div
