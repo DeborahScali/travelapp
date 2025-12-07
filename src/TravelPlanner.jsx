@@ -80,6 +80,28 @@ const getPhotoUrl = (photos, size = 400) => {
   return null;
 };
 
+const getCurrencySymbol = (curr) => {
+  const symbols = { 'EUR': '€', 'USD': '$', 'GBP': '£', 'CHF': 'CHF', 'BRL': 'R$' };
+  return symbols[curr] || '€';
+};
+
+const renderTypeIcon = (type, size = 16, className = '') => {
+  switch (type) {
+    case 'restaurant':
+      return <FaUtensils size={size} className={className} />;
+    case 'cafe':
+      return <Coffee size={size} className={className} />;
+    case 'activity':
+      return <Camera size={size} className={className} />;
+    case 'note':
+      return <StickyNote size={size} className={className} />;
+    default:
+      return <Building size={size} className={className} />;
+  }
+};
+
+const isCompactType = (type) => type && type !== 'place';
+
 const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMode = () => {} }) => {
   // Authentication
   const { currentUser, signOut } = useAuth();
@@ -1182,11 +1204,6 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
             fontWeight: 'bold'
           }
         });
-        const getCurrencySymbol = (curr) => {
-          const symbols = { 'EUR': '€', 'USD': '$', 'GBP': '£', 'CHF': 'CHF', 'BRL': 'R$' };
-          return symbols[curr] || '€';
-        };
-
         const getTypeIcon = (type) => {
           const icons = {
             'place': '🏛️',
@@ -2384,508 +2401,556 @@ const parseLocalDate = (value) => {
                                 }
                               }
                             }}
-                            className={`flex-1 rounded-2xl overflow-hidden transition-all ring-1 ring-transparent ${
-                              place.visited
-                                ? 'bg-gray-50 border border-gray-200'
-                                : 'bg-white/90 border border-gray-100 shadow-sm hover:shadow-lg hover:-translate-y-0.5 hover:ring-[#FF6B6B]/15 cursor-move'
+                            className={`flex-1 transition-all ring-1 ring-transparent ${
+                              isCompactType(place.type)
+                                ? `rounded-xl bg-white border border-gray-200 shadow-sm hover:shadow-md hover:-translate-y-0.5 px-3 py-2 ${place.visited ? 'opacity-80' : ''}`
+                                : `rounded-2xl overflow-hidden ${
+                                    place.visited
+                                      ? 'bg-gray-50 border border-gray-200'
+                                      : 'bg-white/90 border border-gray-100 shadow-sm hover:shadow-lg hover:-translate-y-0.5 hover:ring-[#FF6B6B]/15 cursor-move'
+                                  }`
                             } ${draggedItem?.placeId === place.id ? 'opacity-50' : ''}`}
                           >
-                            {/* Place Header */}
-                            <div className="p-4 sm:p-5 bg-gradient-to-br from-white via-white to-[#FFE66D]/10">
-                              <div className="flex items-start gap-4">
-                                {/* Photo / Icon column */}
-                                <div className="flex-shrink-0">
-                                  {place.photoUrl ? (
-                                    <div className="relative w-24 h-24 rounded-2xl overflow-hidden shadow-md border border-gray-100">
-                                      <img
-                                        src={place.photoUrl}
-                                        alt={place.name}
-                                        className="w-full h-full object-cover"
-                                        loading="lazy"
-                                      />
-                                      <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-transparent" />
-                                      {place.type && place.type !== 'place' && (
-                                        <div className="absolute bottom-1 left-1">
-                                          <div className="w-8 h-8 rounded-lg bg-white/90 backdrop-blur flex items-center justify-center shadow">
-                                            {place.type === 'restaurant' && <FaUtensils size={14} className="text-orange-500" />}
-                                            {place.type === 'cafe' && <Coffee size={16} className="text-amber-600" />}
-                                            {place.type === 'activity' && <Camera size={16} className="text-green-500" />}
-                                            {place.type === 'note' && <StickyNote size={16} className="text-purple-500" />}
-                                          </div>
-                                        </div>
-                                      )}
-                                    </div>
-                                  ) : (
-                                    <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#FF6B6B] to-[#FFE66D] flex items-center justify-center shadow-sm text-white">
-                                      {place.type === 'place' && <Building size={18} className="text-white" />}
-                                      {place.type === 'restaurant' && <FaUtensils size={15} className="text-white" />}
-                                      {place.type === 'cafe' && <Coffee size={17} className="text-white" />}
-                                      {place.type === 'activity' && <Camera size={17} className="text-white" />}
-                                      {place.type === 'note' && <StickyNote size={17} className="text-white" />}
-                                      {!place.type && <Building size={18} className="text-white" />}
-                                    </div>
+                            {isCompactType(place.type) ? (
+                              <div className="flex items-center justify-between gap-3">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <div className="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center text-gray-700">
+                                    {renderTypeIcon(place.type, 16, 'text-gray-700')}
+                                  </div>
+                                  <div className="min-w-0">
+                                    <p className="text-sm font-semibold text-gray-900 truncate">
+                                      {place.name || 'Item'}
+                                    </p>
+                                    {place.address && (
+                                      <p className="text-xs text-gray-500 truncate">{place.address}</p>
+                                    )}
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center gap-2 flex-shrink-0">
+                                  {place.cost && (
+                                    <span className="text-sm font-semibold text-gray-900 whitespace-nowrap">
+                                      {getCurrencySymbol(place.currency)}{place.cost}
+                                    </span>
                                   )}
-                                </div>
-
-                                {/* Place Info */}
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex items-center gap-2 mb-2 flex-wrap">
-                                    <h4 className="font-bold text-base sm:text-lg text-gray-900">
-                                      {place.name}
-                                    </h4>
-
-                                    {/* Priority Stars */}
-                                    <div className="flex items-center gap-0.5">
-                                      {[1, 2, 3, 4, 5].map((star) => {
-                                        const currentPriority = place.priority || 0;
-                                        const isActive = star <= currentPriority;
-
-                                        return (
-                                          <button
-                                            key={star}
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              handleChangePriority(selectedDay, place.id, star);
-                                            }}
-                                            className="transition-all hover:scale-110"
-                                            title={`Priority: ${star}/5`}
-                                          >
-                                            <FaStar className={isActive ? 'text-yellow-500' : 'text-gray-300'} size={16} />
-                                          </button>
-                                        );
-                                      })}
-                                    </div>
-                                  </div>
-
-                                  <div className="flex flex-wrap items-center gap-2 mb-1">
-                                    {place.duration && (
-                                      <span className="px-3 py-1 text-xs rounded-full bg-[#4ECDC4]/10 text-[#17806f] border border-[#4ECDC4]/20">
-                                        ⏱ {place.duration}h
-                                      </span>
-                                    )}
-                                    {place.cost && (
-                                      <span className="px-3 py-1 text-xs rounded-full bg-[#FF6B6B]/10 text-[#c84a4a] border border-[#FF6B6B]/20">
-                                        💰 {place.cost} {place.currency || ''}
-                                      </span>
-                                    )}
-                                    {place.visited && (
-                                      <span className="px-3 py-1 text-xs rounded-full bg-gray-800 text-white">
-                                        Completed
-                                      </span>
-                                    )}
-                                  </div>
-
-                                  {/* Rich Text Notes Input */}
-                                <div className="relative -mt-1">
-                                  {/* Formatting Toolbar */}
-                                  {focusedNotesEditor === place.id && (
-                                    <div
-                                      className="flex items-center gap-1 mb-1 p-1 bg-gray-50 border border-gray-200 rounded flex-wrap"
-                                      onMouseDown={(e) => e.preventDefault()}
-                                      onClick={(e) => e.stopPropagation()}
-                                    >
-                                      {/* Bold */}
-                                      <button
-                                        onMouseDown={(e) => {
-                                          e.preventDefault();
-                                          document.execCommand('bold', false, null);
-                                        }}
-                                        className="px-2 py-1 hover:bg-gray-200 rounded text-xs font-bold"
-                                        title="Bold"
-                                      >
-                                        B
-                                      </button>
-
-                                      {/* Italic */}
-                                      <button
-                                        onMouseDown={(e) => {
-                                          e.preventDefault();
-                                          document.execCommand('italic', false, null);
-                                        }}
-                                        className="px-2 py-1 hover:bg-gray-200 rounded text-xs italic"
-                                        title="Italic"
-                                      >
-                                        I
-                                      </button>
-
-                                      <span className="text-gray-300">|</span>
-
-                                      {/* Font Family */}
-                                      <select
-                                        onMouseDown={(e) => e.preventDefault()}
-                                        onChange={(e) => {
-                                          document.execCommand('fontName', false, e.target.value);
-                                          e.target.value = '';
-                                        }}
-                                        className="px-1 py-1 text-xs border border-gray-300 rounded hover:bg-gray-200"
-                                        title="Font"
-                                      >
-                                        <option value="">Font</option>
-                                        <option value="Arial">Arial</option>
-                                        <option value="Courier New">Courier</option>
-                                        <option value="Georgia">Georgia</option>
-                                        <option value="Times New Roman">Times</option>
-                                        <option value="Verdana">Verdana</option>
-                                        <option value="Comic Sans MS">Comic Sans</option>
-                                      </select>
-
-                                      {/* Font Color */}
-                                      <input
-                                        type="color"
-                                        onMouseDown={(e) => e.preventDefault()}
-                                        onChange={(e) => {
-                                          document.execCommand('foreColor', false, e.target.value);
-                                        }}
-                                        className="w-6 h-6 border border-gray-300 rounded cursor-pointer"
-                                        title="Text Color"
-                                      />
-
-                                      {/* Background Color */}
-                                      <input
-                                        type="color"
-                                        onMouseDown={(e) => e.preventDefault()}
-                                        onChange={(e) => {
-                                          document.execCommand('backColor', false, e.target.value);
-                                        }}
-                                        className="w-6 h-6 border border-gray-300 rounded cursor-pointer"
-                                        title="Background Color"
-                                      />
-
-                                      <span className="text-gray-300">|</span>
-
-                                      {/* Emoji Picker Button */}
-                                      <button
-                                        onMouseDown={(e) => e.preventDefault()}
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          setShowEmojiPicker(showEmojiPicker === place.id ? null : place.id);
-                                        }}
-                                        className="px-2 py-1 hover:bg-gray-200 rounded text-xs"
-                                        title="Add Emoji"
-                                      >
-                                        😀
-                                      </button>
-
-                                      {/* Emoji Picker Dropdown */}
-                                      {showEmojiPicker === place.id && (
-                                        <div
-                                          className="absolute top-full left-0 mt-1 bg-white border border-gray-300 rounded shadow-lg p-2 z-10 flex flex-wrap gap-1 max-w-[200px]"
-                                          onMouseDown={(e) => e.preventDefault()}
-                                        >
-                                          {['😀', '😃', '😄', '😁', '😅', '😂', '🤣', '😊', '😇', '🙂', '🙃', '😉', '😌', '😍', '🥰', '😘', '😗', '😙', '😚', '😋', '😛', '😝', '😜', '🤪', '🤨', '🧐', '🤓', '😎', '🥳', '😏', '😒', '😞', '😔', '😟', '😕', '🙁', '☹️', '😣', '😖', '😫', '😩', '🥺', '😢', '😭', '😤', '😠', '😡', '🤬', '🤯', '😳', '🥵', '🥶', '😱', '😨', '😰', '😥', '😓', '🤗', '🤔', '🤭', '🤫', '🤥', '😶', '😐', '😑', '😬', '🙄', '😯', '😦', '😧', '😮', '😲', '🥱', '😴', '🤤', '😪', '😵', '🤐', '🥴', '🤢', '🤮', '🤧', '😷', '🤒', '🤕', '🤑', '🤠', '❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍', '🤎', '💔', '❣️', '💕', '💞', '💓', '💗', '💖', '💘', '💝', '⭐', '✨', '🌟', '💫', '⚡', '🔥', '💥', '👍', '👎', '👌', '✌️', '🤞', '🤟', '🤘', '🤙', '👈', '👉', '👆', '👇', '☝️', '✋', '🤚', '🖐️', '🖖', '👋', '🤝', '💪', '🦾', '🙏', '✍️', '💅', '🦵', '🦿', '🦶'].map(emoji => (
-                                            <button
-                                              key={emoji}
-                                              onMouseDown={(e) => {
-                                                e.preventDefault();
-                                                document.execCommand('insertText', false, emoji);
-                                                setShowEmojiPicker(null);
-                                              }}
-                                              className="text-lg hover:bg-gray-100 rounded p-1"
-                                            >
-                                              {emoji}
-                                            </button>
-                                          ))}
-                                        </div>
-                                      )}
-                                    </div>
-                                  )}
-
-                                  <div
-                                    contentEditable
-                                    suppressContentEditableWarning
-                                    onFocus={(e) => {
-                                      e.stopPropagation();
-                                      setFocusedNotesEditor(place.id);
-                                    }}
-                                    onBlur={(e) => {
-                                      // Delay to allow toolbar clicks to register
-                                      setTimeout(() => {
-                                        setFocusedNotesEditor(null);
-                                        setShowEmojiPicker(null);
-                                      }, 200);
-
-                                      const updatedPlans = dailyPlans.map(d => ({
-                                        ...d,
-                                        places: d.places.map(p =>
-                                          p.id === place.id && d.id === selectedDay
-                                            ? { ...p, notes: e.currentTarget.innerHTML }
-                                            : p
-                                        )
-                                      }));
-                                      setDailyPlans(updatedPlans);
-                                    }}
-                                    onClick={(e) => e.stopPropagation()}
-                                    onKeyDown={(e) => e.stopPropagation()}
-                                    dangerouslySetInnerHTML={{ __html: place.notes || '' }}
-                                    data-placeholder="Add notes, links and so on..."
-                                    className="text-gray-600 text-sm mb-2 px-2 py-1 border border-transparent hover:border-gray-300 focus:border-[#4ECDC4] rounded outline-none min-h-[24px] max-h-[200px] overflow-y-auto transition-all empty:before:content-[attr(data-placeholder)] empty:before:text-gray-400"
-                                    style={{
-                                      wordWrap: 'break-word',
-                                      whiteSpace: 'pre-wrap'
-                                    }}
-                                  />
-                                </div>
-
-                                {/* Compact Metadata Inputs */}
-                                <div className="flex items-center gap-2 text-xs flex-wrap">
-                                  {/* Time */}
-                                  <div className="flex items-center gap-1">
-                                    <Calendar size={14} className="text-gray-400" />
-                                    <input
-                                      type="time"
-                                      value={place.visitTime || ''}
-                                      onChange={(e) => {
-                                        const updatedPlans = dailyPlans.map(d => ({
-                                          ...d,
-                                          places: d.places.map(p =>
-                                            p.id === place.id && d.id === selectedDay
-                                              ? { ...p, visitTime: e.target.value }
-                                              : p
-                                          )
-                                        }));
-                                        setDailyPlans(updatedPlans);
-                                      }}
-                                      onClick={(e) => e.stopPropagation()}
-                                      className="w-16 px-1 py-0.5 border border-gray-300 rounded text-xs focus:border-[#4ECDC4] focus:outline-none"
-                                      placeholder="--:--"
-                                    />
-                                  </div>
-
-                                  <span className="text-gray-300">|</span>
-
-                                  {/* Duration */}
-                                  <div className="flex items-center gap-1">
-                                    <TbTimeDuration30 size={14} className="text-gray-400" />
-                                    <input
-                                      type="number"
-                                      step="0.5"
-                                      value={place.duration || ''}
-                                      onChange={(e) => {
-                                        const updatedPlans = dailyPlans.map(d => ({
-                                          ...d,
-                                          places: d.places.map(p =>
-                                            p.id === place.id && d.id === selectedDay
-                                              ? { ...p, duration: e.target.value }
-                                              : p
-                                          )
-                                        }));
-                                        setDailyPlans(updatedPlans);
-                                      }}
-                                      onClick={(e) => e.stopPropagation()}
-                                      className="w-12 px-1 py-0.5 border border-gray-300 rounded text-xs focus:border-[#4ECDC4] focus:outline-none"
-                                      placeholder="1.5"
-                                    />
-                                    <span className="text-gray-500">h</span>
-                                  </div>
-
-                                  <span className="text-gray-300">|</span>
-
-                                  {/* Cost */}
-                                  <div className="flex items-center gap-1 relative">
-                                    <MdAttachMoney size={16} className="text-gray-400" />
-                                    <input
-                                      type="number"
-                                      step="0.01"
-                                      value={place.cost || ''}
-                                      onChange={(e) => {
-                                        const updatedPlans = dailyPlans.map(d => ({
-                                          ...d,
-                                          places: d.places.map(p =>
-                                            p.id === place.id && d.id === selectedDay
-                                              ? { ...p, cost: e.target.value }
-                                              : p
-                                          )
-                                        }));
-                                        setDailyPlans(updatedPlans);
-                                      }}
-                                      onClick={(e) => e.stopPropagation()}
-                                      className="w-16 px-1 py-0.5 border border-gray-300 rounded text-xs focus:border-[#4ECDC4] focus:outline-none"
-                                      placeholder="25.00"
-                                    />
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        const rect = e.currentTarget.getBoundingClientRect();
-                                        setCurrencyPickerPosition({
-                                          top: rect.bottom + 8,
-                                          left: rect.right - 180
-                                        });
-                                        setShowCurrencyPicker(showCurrencyPicker === place.id ? null : place.id);
-                                      }}
-                                      className="text-gray-500 hover:text-[#4ECDC4] transition-colors cursor-pointer text-xs font-medium"
-                                    >
-                                      {(place.currency || 'EUR') === 'EUR' && '€'}
-                                      {(place.currency || 'EUR') === 'USD' && '$'}
-                                      {(place.currency || 'EUR') === 'GBP' && '£'}
-                                      {(place.currency || 'EUR') === 'CHF' && 'CHF'}
-                                      {(place.currency || 'EUR') === 'BRL' && 'R$'}
-                                    </button>
-
-                                    {/* Currency Picker Popup */}
-                                    {showCurrencyPicker === place.id && (
-                                      <>
-                                        {/* Backdrop to close picker when clicking outside */}
-                                        <div
-                                          className="fixed inset-0 z-[998]"
-                                          onClick={() => setShowCurrencyPicker(null)}
-                                        />
-                                        <div
-                                          className="fixed bg-white rounded-lg shadow-2xl border border-gray-200 py-1 z-[999] min-w-[180px]"
-                                          style={{
-                                            top: `${currencyPickerPosition.top}px`,
-                                            left: `${currencyPickerPosition.left}px`
-                                          }}
-                                          onClick={(e) => e.stopPropagation()}
-                                        >
-                                        <button
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            const updatedPlans = dailyPlans.map(d => ({
-                                              ...d,
-                                              places: d.places.map(p =>
-                                                p.id === place.id && d.id === selectedDay
-                                                  ? { ...p, currency: 'EUR' }
-                                                  : p
-                                              )
-                                            }));
-                                            setDailyPlans(updatedPlans);
-                                            setShowCurrencyPicker(null);
-                                          }}
-                                          className={`w-full text-left px-3 py-1.5 hover:bg-gray-100 transition-colors flex items-center justify-between ${(place.currency || 'EUR') === 'EUR' ? 'bg-[#4ECDC4] bg-opacity-10' : ''}`}
-                                        >
-                                          <span className="text-sm text-gray-700 flex items-center gap-2">
-                                            <span className="text-lg">🇪🇺</span>
-                                            Euro (EUR)
-                                          </span>
-                                          {(place.currency || 'EUR') === 'EUR' && <span className="text-[#4ECDC4] text-xs">✓</span>}
-                                        </button>
-
-                                        <button
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            const updatedPlans = dailyPlans.map(d => ({
-                                              ...d,
-                                              places: d.places.map(p =>
-                                                p.id === place.id && d.id === selectedDay
-                                                  ? { ...p, currency: 'USD' }
-                                                  : p
-                                              )
-                                            }));
-                                            setDailyPlans(updatedPlans);
-                                            setShowCurrencyPicker(null);
-                                          }}
-                                          className={`w-full text-left px-3 py-1.5 hover:bg-gray-100 transition-colors flex items-center justify-between ${(place.currency || 'EUR') === 'USD' ? 'bg-[#4ECDC4] bg-opacity-10' : ''}`}
-                                        >
-                                          <span className="text-sm text-gray-700 flex items-center gap-2">
-                                            <span className="text-lg">🇺🇸</span>
-                                            US Dollar (USD)
-                                          </span>
-                                          {(place.currency || 'EUR') === 'USD' && <span className="text-[#4ECDC4] text-xs">✓</span>}
-                                        </button>
-
-                                        <button
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            const updatedPlans = dailyPlans.map(d => ({
-                                              ...d,
-                                              places: d.places.map(p =>
-                                                p.id === place.id && d.id === selectedDay
-                                                  ? { ...p, currency: 'GBP' }
-                                                  : p
-                                              )
-                                            }));
-                                            setDailyPlans(updatedPlans);
-                                            setShowCurrencyPicker(null);
-                                          }}
-                                          className={`w-full text-left px-3 py-1.5 hover:bg-gray-100 transition-colors flex items-center justify-between ${(place.currency || 'EUR') === 'GBP' ? 'bg-[#4ECDC4] bg-opacity-10' : ''}`}
-                                        >
-                                          <span className="text-sm text-gray-700 flex items-center gap-2">
-                                            <span className="text-lg">🇬🇧</span>
-                                            British Pound (GBP)
-                                          </span>
-                                          {(place.currency || 'EUR') === 'GBP' && <span className="text-[#4ECDC4] text-xs">✓</span>}
-                                        </button>
-
-                                        <button
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            const updatedPlans = dailyPlans.map(d => ({
-                                              ...d,
-                                              places: d.places.map(p =>
-                                                p.id === place.id && d.id === selectedDay
-                                                  ? { ...p, currency: 'CHF' }
-                                                  : p
-                                              )
-                                            }));
-                                            setDailyPlans(updatedPlans);
-                                            setShowCurrencyPicker(null);
-                                          }}
-                                          className={`w-full text-left px-3 py-1.5 hover:bg-gray-100 transition-colors flex items-center justify-between ${(place.currency || 'EUR') === 'CHF' ? 'bg-[#4ECDC4] bg-opacity-10' : ''}`}
-                                        >
-                                          <span className="text-sm text-gray-700 flex items-center gap-2">
-                                            <span className="text-lg">🇨🇭</span>
-                                            Swiss Franc (CHF)
-                                          </span>
-                                          {(place.currency || 'EUR') === 'CHF' && <span className="text-[#4ECDC4] text-xs">✓</span>}
-                                        </button>
-
-                                        <button
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            const updatedPlans = dailyPlans.map(d => ({
-                                              ...d,
-                                              places: d.places.map(p =>
-                                                p.id === place.id && d.id === selectedDay
-                                                  ? { ...p, currency: 'BRL' }
-                                                  : p
-                                              )
-                                            }));
-                                            setDailyPlans(updatedPlans);
-                                            setShowCurrencyPicker(null);
-                                          }}
-                                          className={`w-full text-left px-3 py-1.5 hover:bg-gray-100 transition-colors flex items-center justify-between ${(place.currency || 'EUR') === 'BRL' ? 'bg-[#4ECDC4] bg-opacity-10' : ''}`}
-                                        >
-                                          <span className="text-sm text-gray-700 flex items-center gap-2">
-                                            <span className="text-lg">🇧🇷</span>
-                                            Brazilian Real (BRL)
-                                          </span>
-                                          {(place.currency || 'EUR') === 'BRL' && <span className="text-[#4ECDC4] text-xs">✓</span>}
-                                        </button>
-                                      </div>
-                                      </>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-
-                              {/* Action Buttons */}
-                              {(
-                                <div className="flex gap-1 sm:gap-2 flex-shrink-0">
                                   <button
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      openInGoogleMaps(place.address);
+                                      openInGoogleMaps(place.address || place.name);
                                     }}
-                                    className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"
+                                    className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg"
                                     title="Open in Google Maps"
                                   >
-                                    <MapIcon size={18} />
+                                    <MapIcon size={16} />
                                   </button>
                                   <button
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       handleDeletePlace(selectedDay, place.id);
                                     }}
-                                    className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
+                                    className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg"
                                   >
-                                    <Trash2 size={18} />
+                                    <Trash2 size={16} />
                                   </button>
                                 </div>
-                              )}
+                              </div>
+                            ) : (
+                              <>
+                                {/* Place Header */}
+                                <div className="p-4 sm:p-5 bg-gradient-to-br from-white via-white to-[#FFE66D]/10">
+                                  <div className="flex items-start gap-4">
+                                    {/* Photo / Icon column */}
+                                    <div className="flex-shrink-0">
+                                      {place.photoUrl ? (
+                                        <div className="relative w-24 h-24 rounded-2xl overflow-hidden shadow-md border border-gray-100">
+                                          <img
+                                            src={place.photoUrl}
+                                            alt={place.name}
+                                            className="w-full h-full object-cover"
+                                            loading="lazy"
+                                          />
+                                          <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-transparent" />
+                                          {place.type && place.type !== 'place' && (
+                                            <div className="absolute bottom-1 left-1">
+                                              <div className="w-8 h-8 rounded-lg bg-white/90 backdrop-blur flex items-center justify-center shadow">
+                                                {place.type === 'restaurant' && <FaUtensils size={14} className="text-orange-500" />}
+                                                {place.type === 'cafe' && <Coffee size={16} className="text-amber-600" />}
+                                                {place.type === 'activity' && <Camera size={16} className="text-green-500" />}
+                                                {place.type === 'note' && <StickyNote size={16} className="text-purple-500" />}
+                                              </div>
+                                            </div>
+                                          )}
+                                        </div>
+                                      ) : (
+                                        <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#FF6B6B] to-[#FFE66D] flex items-center justify-center shadow-sm text-white">
+                                          {place.type === 'place' && <Building size={18} className="text-white" />}
+                                          {place.type === 'restaurant' && <FaUtensils size={15} className="text-white" />}
+                                          {place.type === 'cafe' && <Coffee size={17} className="text-white" />}
+                                          {place.type === 'activity' && <Camera size={17} className="text-white" />}
+                                          {place.type === 'note' && <StickyNote size={17} className="text-white" />}
+                                          {!place.type && <Building size={18} className="text-white" />}
+                                        </div>
+                                      )}
+                                    </div>
+
+                                    {/* Place Info */}
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-2 mb-2 flex-wrap">
+                                        <h4 className="font-bold text-base sm:text-lg text-gray-900">
+                                          {place.name}
+                                        </h4>
+
+                                        {/* Priority Stars */}
+                                        <div className="flex items-center gap-0.5">
+                                          {[1, 2, 3, 4, 5].map((star) => {
+                                            const currentPriority = place.priority || 0;
+                                            const isActive = star <= currentPriority;
+
+                                            return (
+                                              <button
+                                                key={star}
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  handleChangePriority(selectedDay, place.id, star);
+                                                }}
+                                                className="transition-all hover:scale-110"
+                                                title={`Priority: ${star}/5`}
+                                              >
+                                                <FaStar className={isActive ? 'text-yellow-500' : 'text-gray-300'} size={16} />
+                                              </button>
+                                            );
+                                          })}
+                                        </div>
+                                      </div>
+
+                                      <div className="flex flex-wrap items-center gap-2 mb-1">
+                                        {place.duration && (
+                                          <span className="px-3 py-1 text-xs rounded-full bg-[#4ECDC4]/10 text-[#17806f] border border-[#4ECDC4]/20">
+                                            ⏱ {place.duration}h
+                                          </span>
+                                        )}
+                                        {place.cost && (
+                                          <span className="px-3 py-1 text-xs rounded-full bg-[#FF6B6B]/10 text-[#c84a4a] border border-[#FF6B6B]/20">
+                                            💰 {place.cost} {place.currency || ''}
+                                          </span>
+                                        )}
+                                        {place.visited && (
+                                          <span className="px-3 py-1 text-xs rounded-full bg-gray-800 text-white">
+                                            Completed
+                                          </span>
+                                        )}
+                                      </div>
+
+                                      {/* Rich Text Notes Input */}
+                                    <div className="relative -mt-1">
+                                      {/* Formatting Toolbar */}
+                                      {focusedNotesEditor === place.id && (
+                                        <div
+                                          className="flex items-center gap-1 mb-1 p-1 bg-gray-50 border border-gray-200 rounded flex-wrap"
+                                          onMouseDown={(e) => e.preventDefault()}
+                                          onClick={(e) => e.stopPropagation()}
+                                        >
+                                          {/* Bold */}
+                                          <button
+                                            onMouseDown={(e) => {
+                                              e.preventDefault();
+                                              document.execCommand('bold', false, null);
+                                            }}
+                                            className="px-2 py-1 hover:bg-gray-200 rounded text-xs font-bold"
+                                            title="Bold"
+                                          >
+                                            B
+                                          </button>
+
+                                          {/* Italic */}
+                                          <button
+                                            onMouseDown={(e) => {
+                                              e.preventDefault();
+                                              document.execCommand('italic', false, null);
+                                            }}
+                                            className="px-2 py-1 hover:bg-gray-200 rounded text-xs italic"
+                                            title="Italic"
+                                          >
+                                            I
+                                          </button>
+
+                                          <span className="text-gray-300">|</span>
+
+                                          {/* Font Family */}
+                                          <select
+                                            onMouseDown={(e) => e.preventDefault()}
+                                            onChange={(e) => {
+                                              document.execCommand('fontName', false, e.target.value);
+                                              e.target.value = '';
+                                            }}
+                                            className="px-1 py-1 text-xs border border-gray-300 rounded hover:bg-gray-200"
+                                            title="Font"
+                                          >
+                                            <option value="">Font</option>
+                                            <option value="Arial">Arial</option>
+                                            <option value="Courier New">Courier</option>
+                                            <option value="Georgia">Georgia</option>
+                                            <option value="Times New Roman">Times</option>
+                                            <option value="Verdana">Verdana</option>
+                                            <option value="Comic Sans MS">Comic Sans</option>
+                                          </select>
+
+                                          {/* Font Color */}
+                                          <input
+                                            type="color"
+                                            onMouseDown={(e) => e.preventDefault()}
+                                            onChange={(e) => {
+                                              document.execCommand('foreColor', false, e.target.value);
+                                            }}
+                                            className="w-6 h-6 border border-gray-300 rounded cursor-pointer"
+                                            title="Text Color"
+                                          />
+
+                                          {/* Background Color */}
+                                          <input
+                                            type="color"
+                                            onMouseDown={(e) => e.preventDefault()}
+                                            onChange={(e) => {
+                                              document.execCommand('backColor', false, e.target.value);
+                                            }}
+                                            className="w-6 h-6 border border-gray-300 rounded cursor-pointer"
+                                            title="Background Color"
+                                          />
+
+                                          <span className="text-gray-300">|</span>
+
+                                          {/* Emoji Picker Button */}
+                                          <button
+                                            onMouseDown={(e) => e.preventDefault()}
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setShowEmojiPicker(showEmojiPicker === place.id ? null : place.id);
+                                            }}
+                                            className="px-2 py-1 hover:bg-gray-200 rounded text-xs"
+                                            title="Add Emoji"
+                                          >
+                                            😀
+                                          </button>
+
+                                          {/* Emoji Picker Dropdown */}
+                                          {showEmojiPicker === place.id && (
+                                            <div
+                                              className="absolute top-full left-0 mt-1 bg-white border border-gray-300 rounded shadow-lg p-2 z-10 flex flex-wrap gap-1 max-w-[200px]"
+                                              onMouseDown={(e) => e.preventDefault()}
+                                            >
+                                              {['😀', '😃', '😄', '😁', '😅', '😂', '🤣', '😊', '😇', '🙂', '🙃', '😉', '😌', '😍', '🥰', '😘', '😗', '😙', '😚', '😋', '😛', '😝', '😜', '🤪', '🤨', '🧐', '🤓', '😎', '🥳', '😏', '😒', '😞', '😔', '😟', '😕', '🙁', '☹️', '😣', '😖', '😫', '😩', '🥺', '😢', '😭', '😤', '😠', '😡', '🤬', '🤯', '😳', '🥵', '🥶', '😱', '😨', '😰', '😥', '😓', '🤗', '🤔', '🤭', '🤫', '🤥', '😶', '😐', '😑', '😬', '🙄', '😯', '😦', '😧', '😮', '😲', '🥱', '😴', '🤤', '😪', '😵', '🤐', '🥴', '🤢', '🤮', '🤧', '😷', '🤒', '🤕', '🤑', '🤠', '❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍', '🤎', '💔', '❣️', '💕', '💞', '💓', '💗', '💖', '💘', '💝', '⭐', '✨', '🌟', '💫', '⚡', '🔥', '💥', '👍', '👎', '👌', '✌️', '🤞', '🤟', '🤘', '🤙', '👈', '👉', '👆', '👇', '☝️', '✋', '🤚', '🖐️', '🖖', '👋', '🤝', '💪', '🦾', '🙏', '✍️', '💅', '🦵', '🦿', '🦶'].map(emoji => (
+                                                <button
+                                                  key={emoji}
+                                                  onMouseDown={(e) => {
+                                                    e.preventDefault();
+                                                    document.execCommand('insertText', false, emoji);
+                                                    setShowEmojiPicker(null);
+                                                  }}
+                                                  className="text-lg hover:bg-gray-100 rounded p-1"
+                                                >
+                                                  {emoji}
+                                                </button>
+                                              ))}
+                                            </div>
+                                          )}
+                                        </div>
+                                      )}
+
+                                      <div
+                                        contentEditable
+                                        suppressContentEditableWarning
+                                        onFocus={(e) => {
+                                          e.stopPropagation();
+                                          setFocusedNotesEditor(place.id);
+                                        }}
+                                        onBlur={(e) => {
+                                          // Delay to allow toolbar clicks to register
+                                          setTimeout(() => {
+                                            setFocusedNotesEditor(null);
+                                            setShowEmojiPicker(null);
+                                          }, 200);
+
+                                          const updatedPlans = dailyPlans.map(d => ({
+                                            ...d,
+                                            places: d.places.map(p =>
+                                              p.id === place.id && d.id === selectedDay
+                                                ? { ...p, notes: e.currentTarget.innerHTML }
+                                                : p
+                                            )
+                                          }));
+                                          setDailyPlans(updatedPlans);
+                                        }}
+                                        onClick={(e) => e.stopPropagation()}
+                                        onKeyDown={(e) => e.stopPropagation()}
+                                        dangerouslySetInnerHTML={{ __html: place.notes || '' }}
+                                        data-placeholder="Add notes, links and so on..."
+                                        className="text-gray-600 text-sm mb-2 px-2 py-1 border border-transparent hover:border-gray-300 focus:border-[#4ECDC4] rounded outline-none min-h-[24px] max-h-[200px] overflow-y-auto transition-all empty:before:content-[attr(data-placeholder)] empty:before:text-gray-400"
+                                        style={{
+                                          wordWrap: 'break-word',
+                                          whiteSpace: 'pre-wrap'
+                                        }}
+                                      />
+                                    </div>
+
+                                    {/* Compact Metadata Inputs */}
+                                    <div className="flex items-center gap-2 text-xs flex-wrap">
+                                      {/* Time */}
+                                      <div className="flex items-center gap-1">
+                                        <Calendar size={14} className="text-gray-400" />
+                                        <input
+                                          type="time"
+                                          value={place.visitTime || ''}
+                                          onChange={(e) => {
+                                            const updatedPlans = dailyPlans.map(d => ({
+                                              ...d,
+                                              places: d.places.map(p =>
+                                                p.id === place.id && d.id === selectedDay
+                                                  ? { ...p, visitTime: e.target.value }
+                                                  : p
+                                              )
+                                            }));
+                                            setDailyPlans(updatedPlans);
+                                          }}
+                                          onClick={(e) => e.stopPropagation()}
+                                          className="w-16 px-1 py-0.5 border border-gray-300 rounded text-xs focus:border-[#4ECDC4] focus:outline-none"
+                                          placeholder="--:--"
+                                        />
+                                      </div>
+
+                                      <span className="text-gray-300">|</span>
+
+                                      {/* Duration */}
+                                      <div className="flex items-center gap-1">
+                                        <TbTimeDuration30 size={14} className="text-gray-400" />
+                                        <input
+                                          type="number"
+                                          step="0.5"
+                                          value={place.duration || ''}
+                                          onChange={(e) => {
+                                            const updatedPlans = dailyPlans.map(d => ({
+                                              ...d,
+                                              places: d.places.map(p =>
+                                                p.id === place.id && d.id === selectedDay
+                                                  ? { ...p, duration: e.target.value }
+                                                  : p
+                                              )
+                                            }));
+                                            setDailyPlans(updatedPlans);
+                                          }}
+                                          onClick={(e) => e.stopPropagation()}
+                                          className="w-12 px-1 py-0.5 border border-gray-300 rounded text-xs focus:border-[#4ECDC4] focus:outline-none"
+                                          placeholder="1.5"
+                                        />
+                                        <span className="text-gray-500">h</span>
+                                      </div>
+
+                                      <span className="text-gray-300">|</span>
+
+                                      {/* Cost */}
+                                      <div className="flex items-center gap-1 relative">
+                                        <MdAttachMoney size={16} className="text-gray-400" />
+                                        <input
+                                          type="number"
+                                          step="0.01"
+                                          value={place.cost || ''}
+                                          onChange={(e) => {
+                                            const updatedPlans = dailyPlans.map(d => ({
+                                              ...d,
+                                              places: d.places.map(p =>
+                                                p.id === place.id && d.id === selectedDay
+                                                  ? { ...p, cost: e.target.value }
+                                                  : p
+                                              )
+                                            }));
+                                            setDailyPlans(updatedPlans);
+                                          }}
+                                          onClick={(e) => e.stopPropagation()}
+                                          className="w-16 px-1 py-0.5 border border-gray-300 rounded text-xs focus:border-[#4ECDC4] focus:outline-none"
+                                          placeholder="25.00"
+                                        />
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            const rect = e.currentTarget.getBoundingClientRect();
+                                            setCurrencyPickerPosition({
+                                              top: rect.bottom + 8,
+                                              left: rect.right - 180
+                                            });
+                                            setShowCurrencyPicker(showCurrencyPicker === place.id ? null : place.id);
+                                          }}
+                                          className="text-gray-500 hover:text-[#4ECDC4] transition-colors cursor-pointer text-xs font-medium"
+                                        >
+                                          {(place.currency || 'EUR') === 'EUR' && '€'}
+                                          {(place.currency || 'EUR') === 'USD' && '$'}
+                                          {(place.currency || 'EUR') === 'GBP' && '£'}
+                                          {(place.currency || 'EUR') === 'CHF' && 'CHF'}
+                                          {(place.currency || 'EUR') === 'BRL' && 'R$'}
+                                        </button>
+
+                                        {/* Currency Picker Popup */}
+                                        {showCurrencyPicker === place.id && (
+                                          <>
+                                            {/* Backdrop to close picker when clicking outside */}
+                                            <div
+                                              className="fixed inset-0 z-[998]"
+                                              onClick={() => setShowCurrencyPicker(null)}
+                                            />
+                                            <div
+                                              className="fixed bg-white rounded-lg shadow-2xl border border-gray-200 py-1 z-[999] min-w-[180px]"
+                                              style={{
+                                                top: `${currencyPickerPosition.top}px`,
+                                                left: `${currencyPickerPosition.left}px`
+                                              }}
+                                              onClick={(e) => e.stopPropagation()}
+                                            >
+                                            <button
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                const updatedPlans = dailyPlans.map(d => ({
+                                                  ...d,
+                                                  places: d.places.map(p =>
+                                                    p.id === place.id && d.id === selectedDay
+                                                      ? { ...p, currency: 'EUR' }
+                                                      : p
+                                                  )
+                                                }));
+                                                setDailyPlans(updatedPlans);
+                                                setShowCurrencyPicker(null);
+                                              }}
+                                              className={`w-full text-left px-3 py-1.5 hover:bg-gray-100 transition-colors flex items-center justify-between ${(place.currency || 'EUR') === 'EUR' ? 'bg-[#4ECDC4] bg-opacity-10' : ''}`}
+                                            >
+                                              <span className="text-sm text-gray-700 flex items-center gap-2">
+                                                <span className="text-lg">🇪🇺</span>
+                                                Euro (EUR)
+                                              </span>
+                                              {(place.currency || 'EUR') === 'EUR' && <span className="text-[#4ECDC4] text-xs">✓</span>}
+                                            </button>
+
+                                            <button
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                const updatedPlans = dailyPlans.map(d => ({
+                                                  ...d,
+                                                  places: d.places.map(p =>
+                                                    p.id === place.id && d.id === selectedDay
+                                                      ? { ...p, currency: 'USD' }
+                                                      : p
+                                                  )
+                                                }));
+                                                setDailyPlans(updatedPlans);
+                                                setShowCurrencyPicker(null);
+                                              }}
+                                              className={`w-full text-left px-3 py-1.5 hover:bg-gray-100 transition-colors flex items-center justify-between ${(place.currency || 'EUR') === 'USD' ? 'bg-[#4ECDC4] bg-opacity-10' : ''}`}
+                                            >
+                                              <span className="text-sm text-gray-700 flex items-center gap-2">
+                                                <span className="text-lg">🇺🇸</span>
+                                                US Dollar (USD)
+                                              </span>
+                                              {(place.currency || 'EUR') === 'USD' && <span className="text-[#4ECDC4] text-xs">✓</span>}
+                                            </button>
+
+                                            <button
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                const updatedPlans = dailyPlans.map(d => ({
+                                                  ...d,
+                                                  places: d.places.map(p =>
+                                                    p.id === place.id && d.id === selectedDay
+                                                      ? { ...p, currency: 'GBP' }
+                                                      : p
+                                                  )
+                                                }));
+                                                setDailyPlans(updatedPlans);
+                                                setShowCurrencyPicker(null);
+                                              }}
+                                              className={`w-full text-left px-3 py-1.5 hover:bg-gray-100 transition-colors flex items-center justify-between ${(place.currency || 'EUR') === 'GBP' ? 'bg-[#4ECDC4] bg-opacity-10' : ''}`}
+                                            >
+                                              <span className="text-sm text-gray-700 flex items-center gap-2">
+                                                <span className="text-lg">🇬🇧</span>
+                                                British Pound (GBP)
+                                              </span>
+                                              {(place.currency || 'EUR') === 'GBP' && <span className="text-[#4ECDC4] text-xs">✓</span>}
+                                            </button>
+
+                                            <button
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                const updatedPlans = dailyPlans.map(d => ({
+                                                  ...d,
+                                                  places: d.places.map(p =>
+                                                    p.id === place.id && d.id === selectedDay
+                                                      ? { ...p, currency: 'CHF' }
+                                                      : p
+                                                  )
+                                                }));
+                                                setDailyPlans(updatedPlans);
+                                                setShowCurrencyPicker(null);
+                                              }}
+                                              className={`w-full text-left px-3 py-1.5 hover:bg-gray-100 transition-colors flex items-center justify-between ${(place.currency || 'EUR') === 'CHF' ? 'bg-[#4ECDC4] bg-opacity-10' : ''}`}
+                                            >
+                                              <span className="text-sm text-gray-700 flex items-center gap-2">
+                                                <span className="text-lg">🇨🇭</span>
+                                                Swiss Franc (CHF)
+                                              </span>
+                                              {(place.currency || 'EUR') === 'CHF' && <span className="text-[#4ECDC4] text-xs">✓</span>}
+                                            </button>
+
+                                            <button
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                const updatedPlans = dailyPlans.map(d => ({
+                                                  ...d,
+                                                  places: d.places.map(p =>
+                                                    p.id === place.id && d.id === selectedDay
+                                                      ? { ...p, currency: 'BRL' }
+                                                      : p
+                                                  )
+                                                }));
+                                                setDailyPlans(updatedPlans);
+                                                setShowCurrencyPicker(null);
+                                              }}
+                                              className={`w-full text-left px-3 py-1.5 hover:bg-gray-100 transition-colors flex items-center justify-between ${(place.currency || 'EUR') === 'BRL' ? 'bg-[#4ECDC4] bg-opacity-10' : ''}`}
+                                            >
+                                              <span className="text-sm text-gray-700 flex items-center gap-2">
+                                                <span className="text-lg">🇧🇷</span>
+                                                Brazilian Real (BRL)
+                                              </span>
+                                              {(place.currency || 'EUR') === 'BRL' && <span className="text-[#4ECDC4] text-xs">✓</span>}
+                                            </button>
+                                          </div>
+                                          </>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            {/* Action Buttons */}
+                            <div className="flex gap-1 sm:gap-2 flex-shrink-0">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openInGoogleMaps(place.address);
+                                }}
+                                className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"
+                                title="Open in Google Maps"
+                              >
+                                <MapIcon size={18} />
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDeletePlace(selectedDay, place.id);
+                                }}
+                                className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
+                              >
+                                <Trash2 size={18} />
+                              </button>
                             </div>
-                          </div>
-                        </div>
-                        </div>
+                          </>
+                        )}
+                      </div>
+                    </div>
                       </React.Fragment>
                     ))}
                   </div>
@@ -2905,19 +2970,19 @@ const parseLocalDate = (value) => {
 
                         {/* Dropdown Menu */}
                         {showAddMenu && (
-                          <div className="absolute left-1/2 -translate-x-1/2 z-10 w-72 mt-2 bg-white rounded-xl shadow-2xl border border-gray-200 p-2">
+                          <div className="absolute left-1/2 -translate-x-1/2 z-10 w-64 mt-2 bg-white rounded-xl shadow-2xl border border-gray-200 p-2">
                             <button
                               onClick={() => {
                                 setSelectedAddType('place');
                                 setShowAddMenu(false);
                               }}
-                              className="w-full px-3 py-2 hover:bg-gray-50 transition-colors flex items-center gap-3 rounded-lg"
+                              className="w-full px-2.5 py-1.5 hover:bg-gray-50 transition-colors flex items-center gap-2 rounded-lg"
                             >
-                              <div className="w-9 h-9 rounded-lg bg-blue-100 flex items-center justify-center text-blue-600">
-                                <Building size={18} />
+                              <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center text-blue-600">
+                                <Building size={16} />
                               </div>
                               <div className="text-left">
-                                <div className="font-semibold text-sm text-gray-900">Place / Attraction</div>
+                                <div className="font-semibold text-sm text-gray-900 leading-tight">Place / Attraction</div>
                               </div>
                             </button>
 
@@ -2926,13 +2991,13 @@ const parseLocalDate = (value) => {
                                 setSelectedAddType('restaurant');
                                 setShowAddMenu(false);
                               }}
-                              className="w-full px-3 py-2 hover:bg-gray-50 transition-colors flex items-center gap-3 rounded-lg"
+                              className="w-full px-2.5 py-1.5 hover:bg-gray-50 transition-colors flex items-center gap-2 rounded-lg"
                             >
-                              <div className="w-9 h-9 rounded-lg bg-orange-100 flex items-center justify-center text-orange-600">
-                                <FaUtensils size={16} />
+                              <div className="w-8 h-8 rounded-lg bg-orange-100 flex items-center justify-center text-orange-600">
+                                <FaUtensils size={14} />
                               </div>
                               <div className="text-left">
-                                <div className="font-semibold text-sm text-gray-900">Restaurant</div>
+                                <div className="font-semibold text-sm text-gray-900 leading-tight">Restaurant</div>
                               </div>
                             </button>
 
@@ -2941,13 +3006,13 @@ const parseLocalDate = (value) => {
                                 setSelectedAddType('cafe');
                                 setShowAddMenu(false);
                               }}
-                              className="w-full px-3 py-2 hover:bg-gray-50 transition-colors flex items-center gap-3 rounded-lg"
+                              className="w-full px-2.5 py-1.5 hover:bg-gray-50 transition-colors flex items-center gap-2 rounded-lg"
                             >
-                              <div className="w-9 h-9 rounded-lg bg-amber-100 flex items-center justify-center text-amber-700">
-                                <Coffee size={18} />
+                              <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center text-amber-700">
+                                <Coffee size={16} />
                               </div>
                               <div className="text-left">
-                                <div className="font-semibold text-sm text-gray-900">Café / Bar</div>
+                                <div className="font-semibold text-sm text-gray-900 leading-tight">Café / Bar</div>
                               </div>
                             </button>
 
@@ -2956,13 +3021,13 @@ const parseLocalDate = (value) => {
                                 setSelectedAddType('activity');
                                 setShowAddMenu(false);
                               }}
-                              className="w-full px-3 py-2 hover:bg-gray-50 transition-colors flex items-center gap-3 rounded-lg"
+                              className="w-full px-2.5 py-1.5 hover:bg-gray-50 transition-colors flex items-center gap-2 rounded-lg"
                             >
-                              <div className="w-9 h-9 rounded-lg bg-green-100 flex items-center justify-center text-green-600">
-                                <Camera size={18} />
+                              <div className="w-8 h-8 rounded-lg bg-green-100 flex items-center justify-center text-green-600">
+                                <Camera size={16} />
                               </div>
                               <div className="text-left">
-                                <div className="font-semibold text-sm text-gray-900">Activity</div>
+                                <div className="font-semibold text-sm text-gray-900 leading-tight">Activity</div>
                               </div>
                             </button>
 
@@ -2971,13 +3036,13 @@ const parseLocalDate = (value) => {
                                 setSelectedAddType('note');
                                 setShowAddMenu(false);
                               }}
-                              className="w-full px-3 py-2 hover:bg-gray-50 transition-colors flex items-center gap-3 rounded-lg"
+                              className="w-full px-2.5 py-1.5 hover:bg-gray-50 transition-colors flex items-center gap-2 rounded-lg"
                             >
-                              <div className="w-9 h-9 rounded-lg bg-purple-100 flex items-center justify-center text-purple-600">
-                                <StickyNote size={18} />
+                              <div className="w-8 h-8 rounded-lg bg-purple-100 flex items-center justify-center text-purple-600">
+                                <StickyNote size={16} />
                               </div>
                               <div className="text-left">
-                                <div className="font-semibold text-sm text-gray-900">Note</div>
+                                <div className="font-semibold text-sm text-gray-900 leading-tight">Note</div>
                               </div>
                             </button>
                           </div>
