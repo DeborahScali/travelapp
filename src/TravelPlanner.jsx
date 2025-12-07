@@ -2359,26 +2359,42 @@ const parseLocalDate = (value) => {
 
                         {/* Place Card with Drag Indicator */}
                         <div className="flex items-stretch gap-3 group relative">
-                          {/* Number + drag column */}
-                          <div className="flex-shrink-0 w-10 flex flex-col items-center relative">
-                            <div className="w-9 h-9 flex items-center justify-center mb-2">
-                              <div className="relative w-9 h-9 flex items-center justify-center text-[#FF6B6B] drop-shadow-sm">
-                                <FaLocationPin size={30} />
-                                <span className="absolute text-[13px] font-bold text-white top-1.5">
-                                  {index + 1}
-                                </span>
+                          {/* Number + drag column (only for standard places) */}
+                          {!isCompactType(place.type) && (
+                            <div className="flex-shrink-0 w-10 flex flex-col items-center relative">
+                              <div className="w-9 h-9 flex items-center justify-center mb-2">
+                                <div className="relative w-9 h-9 flex items-center justify-center text-[#FF6B6B] drop-shadow-sm">
+                                  <FaLocationPin size={30} />
+                                  <span className="absolute text-[13px] font-bold text-white top-1.5">
+                                    {index + 1}
+                                  </span>
+                                </div>
                               </div>
+                              {!place.visited && (
+                                <button
+                                  onMouseDown={(e) => e.preventDefault()}
+                                  className="absolute left-1/2 -translate-x-1/2 -translate-y-1/2 top-1/2 opacity-0 group-hover:opacity-100 transition-opacity"
+                                  title="Drag to reorder"
+                                >
+                                  <MdDragIndicator size={18} className="text-gray-400 cursor-grab active:cursor-grabbing" />
+                                </button>
+                              )}
                             </div>
-                            {!place.visited && (
-                              <button
-                                onMouseDown={(e) => e.preventDefault()}
-                                className="absolute left-1/2 -translate-x-1/2 -translate-y-1/2 top-1/2 opacity-0 group-hover:opacity-100 transition-opacity"
-                                title="Drag to reorder"
-                              >
-                                <MdDragIndicator size={18} className="text-gray-400 cursor-grab active:cursor-grabbing" />
-                              </button>
-                            )}
-                          </div>
+                          )}
+                          {/* Drag column for compact items */}
+                          {isCompactType(place.type) && (
+                            <div className="flex-shrink-0 w-10 flex items-center justify-center">
+                              {!place.visited && (
+                                <button
+                                  onMouseDown={(e) => e.preventDefault()}
+                                  className="opacity-60 hover:opacity-100 transition-opacity text-gray-400 hover:text-gray-600"
+                                  title="Drag to reorder"
+                                >
+                                  <MdDragIndicator size={16} />
+                                </button>
+                              )}
+                            </div>
+                          )}
 
                           {/* Place Card */}
                           <div
@@ -2404,7 +2420,7 @@ const parseLocalDate = (value) => {
                             className={`flex-1 transition-all ring-1 ring-transparent ${
                               isCompactType(place.type)
                                 ? `rounded-xl bg-white border border-gray-200 shadow-sm hover:shadow-md hover:-translate-y-0.5 px-3 py-2 ${place.visited ? 'opacity-80' : ''}`
-                                : `rounded-2xl overflow-hidden ${
+                                : `relative rounded-2xl overflow-hidden ${
                                     place.visited
                                       ? 'bg-gray-50 border border-gray-200'
                                       : 'bg-white/90 border border-gray-100 shadow-sm hover:shadow-lg hover:-translate-y-0.5 hover:ring-[#FF6B6B]/15 cursor-move'
@@ -2421,9 +2437,6 @@ const parseLocalDate = (value) => {
                                     <p className="text-sm font-semibold text-gray-900 truncate">
                                       {place.name || 'Item'}
                                     </p>
-                                    {place.address && (
-                                      <p className="text-xs text-gray-500 truncate">{place.address}</p>
-                                    )}
                                   </div>
                                 </div>
 
@@ -2925,13 +2938,13 @@ const parseLocalDate = (value) => {
                                   </div>
                                 </div>
                               </div>
-                            {/* Action Buttons */}
-                            <div className="flex gap-1 sm:gap-2 flex-shrink-0">
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  openInGoogleMaps(place.address);
-                                }}
+                                {/* Action Buttons */}
+                                <div className="absolute top-3 right-3 flex gap-1 sm:gap-2 flex-shrink-0">
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      openInGoogleMaps(place.address);
+                                    }}
                                 className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"
                                 title="Open in Google Maps"
                               >
