@@ -130,6 +130,15 @@ const parsePriceValue = (value) => {
   return Number.isFinite(num) ? num : 0;
 };
 
+const extractLocationFromPlace = (place = {}) => {
+  const result = {
+    city: place.city || '',
+    state: place.state || '',
+    country: place.country || ''
+  };
+  return result;
+};
+
 const CURRENCY_RATES_EUR = {
   EUR: 1,
   USD: 0.92,
@@ -2110,6 +2119,13 @@ const renderExpenseIcon = (category, size = 14) => {
       if (day.city) {
         const dayPlaceTotal = day.places.reduce((sum, p) => sum + convertAmountToBase(parsePriceValue(p.cost), p.currency || 'EUR'), 0);
         byCity[day.city] = (byCity[day.city] || 0) + dayPlaceTotal;
+      } else {
+        day.places.forEach(place => {
+          const loc = extractLocationFromPlace(place);
+          if (loc.city) {
+            byCity[loc.city] = (byCity[loc.city] || 0) + convertAmountToBase(parsePriceValue(place.cost), place.currency || 'EUR');
+          }
+        });
       }
     });
     return byCity;
@@ -2126,6 +2142,13 @@ const renderExpenseIcon = (category, size = 14) => {
       if (day.country) {
         const dayPlaceTotal = day.places.reduce((sum, p) => sum + convertAmountToBase(parsePriceValue(p.cost), p.currency || 'EUR'), 0);
         byCountry[day.country] = (byCountry[day.country] || 0) + dayPlaceTotal;
+      } else {
+        day.places.forEach(place => {
+          const loc = extractLocationFromPlace(place);
+          if (loc.country) {
+            byCountry[loc.country] = (byCountry[loc.country] || 0) + convertAmountToBase(parsePriceValue(place.cost), place.currency || 'EUR');
+          }
+        });
       }
     });
     return byCountry;
@@ -2182,15 +2205,20 @@ const renderExpenseIcon = (category, size = 14) => {
     expenses.forEach(exp => {
       const city = exp.city || '';
       const country = exp.country || '';
-      const label = city && country ? `${city}, ${country}` : city || country || 'Unspecified';
+      const labelParts = [city, country].filter(Boolean);
+      const label = labelParts.length ? labelParts.join(', ') : 'Unspecified';
       byLocation[label] = (byLocation[label] || 0) + convertAmountToBase(parseFloat(exp.amount || 0), exp.currency || 'EUR');
     });
     dailyPlans.forEach(day => {
-      const dayTotal = day.places.reduce((sum, p) => sum + convertAmountToBase(parsePriceValue(p.cost), p.currency || 'EUR'), 0);
-      const city = day.city || '';
-      const country = day.country || '';
-      const label = city && country ? `${city}, ${country}` : city || country || 'Unspecified';
-      byLocation[label] = (byLocation[label] || 0) + dayTotal;
+      day.places.forEach(place => {
+        const loc = extractLocationFromPlace(place);
+        const city = loc.city || day.city || '';
+        const state = loc.state || '';
+        const country = loc.country || day.country || '';
+        const labelParts = [city, state, country].filter(Boolean);
+        const label = labelParts.length ? labelParts.join(', ') : 'Unspecified';
+        byLocation[label] = (byLocation[label] || 0) + convertAmountToBase(parsePriceValue(place.cost), place.currency || 'EUR');
+      });
     });
     return byLocation;
   };
@@ -4231,6 +4259,7 @@ const renderExpenseIcon = (category, size = 14) => {
                                 <div className="flex items-center gap-3 text-xs text-gray-600">
                                   <span>{expense.date ? new Date(expense.date).toLocaleDateString() : 'No date'}</span>
                                   {expense.city && <span>📍 {expense.city}</span>}
+                                  {expense.state && <span>🗺️ {expense.state}</span>}
                                   {expense.country && <span>🌍 {expense.country}</span>}
                                 </div>
                               </div>
@@ -4263,14 +4292,16 @@ const renderExpenseIcon = (category, size = 14) => {
                           .map(place => {
                             const amount = parsePriceValue(place.cost);
                             if (!amount) return null;
+                            const loc = extractLocationFromPlace(place);
                             return {
                               id: `place-${day.id}-${place.id}`,
                               description: place.name || 'Place cost',
                               amount,
                               currency: place.currency || 'EUR',
                               date: day.date,
-                              city: day.city,
-                              country: day.country
+                              city: loc.city || day.city,
+                              country: loc.country || day.country,
+                              state: loc.state
                             };
                           })
                           .filter(Boolean)
@@ -4292,6 +4323,7 @@ const renderExpenseIcon = (category, size = 14) => {
                               <div className="flex items-center gap-3 text-xs text-gray-600">
                                 <span>{expense.date ? new Date(expense.date).toLocaleDateString() : 'No date'}</span>
                                 {expense.city && <span>📍 {expense.city}</span>}
+                                {expense.state && <span>🗺️ {expense.state}</span>}
                                 {expense.country && <span>🌍 {expense.country}</span>}
                               </div>
                             </div>
