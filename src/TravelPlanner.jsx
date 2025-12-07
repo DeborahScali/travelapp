@@ -8,7 +8,7 @@ import { FaStar, FaLocationPin } from 'react-icons/fa6';
 import { MdAttachMoney, MdDragIndicator } from 'react-icons/md';
 import { IoIosAddCircle, IoIosArrowBack, IoIosArrowForward, IoMdTime } from 'react-icons/io';
 import { useAuth } from './contexts/AuthContext';
-import { useTrips, useCurrentTrip, useFlights, useDailyPlans, useExpenses } from './hooks/useFirestore';
+import { useTrips, useCurrentTrip, useFlights, useDailyPlans, useExpenses, useHotels } from './hooks/useFirestore';
 
 // Cities database for Switzerland, Italy, and France
 const CITIES_DATABASE = {
@@ -218,11 +218,13 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
   const { trips, loading: tripsLoading, saveTrip, deleteTrip: deleteTripFromFirestore } = useTrips();
   const { currentTrip, loading: currentTripLoading, saveCurrentTrip } = useCurrentTrip();
   const { flights, loading: flightsLoading, saveFlight, deleteFlight: deleteFlightFromFirestore, setFlights } = useFlights();
+  const { hotels, loading: hotelsLoading, saveHotel, deleteHotel: deleteHotelFromFirestore, setHotels } = useHotels();
   const { dailyPlans, loading: plansLoading, saveDailyPlan, saveDailyPlans, replaceDailyPlans, setDailyPlans } = useDailyPlans();
   const { expenses, loading: expensesLoading, saveExpense, deleteExpense: deleteExpenseFromFirestore, setExpenses } = useExpenses();
 
   const [activeTab, setActiveTab] = useState('itinerary');
   const [showAddFlight, setShowAddFlight] = useState(false);
+  const [showAddHotel, setShowAddHotel] = useState(false);
   const [showAddExpense, setShowAddExpense] = useState(false);
   const [selectedDay, setSelectedDay] = useState(null);
   const [showAddMenu, setShowAddMenu] = useState(false);
@@ -551,11 +553,27 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
     returnDepartureTime: '',
     returnArrivalTime: ''
   });
+  const [hotelForm, setHotelForm] = useState({
+    name: '',
+    address: '',
+    city: '',
+    state: '',
+    country: '',
+    checkIn: '',
+    checkOut: '',
+    price: '',
+    priceCurrency: 'USD'
+  });
   const [flightInputMode, setFlightInputMode] = useState('manual'); // manual | pdf | image
   const [flightDocPreview, setFlightDocPreview] = useState(null);
   const [flightImagePreview, setFlightImagePreview] = useState('');
   const [flightExtracting, setFlightExtracting] = useState(false);
   const [flightExtractError, setFlightExtractError] = useState('');
+  const [hotelInputMode, setHotelInputMode] = useState('manual');
+  const [hotelDocPreview, setHotelDocPreview] = useState(null);
+  const [hotelImagePreview, setHotelImagePreview] = useState('');
+  const [hotelExtracting, setHotelExtracting] = useState(false);
+  const [hotelExtractError, setHotelExtractError] = useState('');
 
   // Place form state
   const [placeForm, setPlaceForm] = useState({
@@ -805,6 +823,135 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
     } catch (error) {
       console.error('Failed to add flight:', error);
       alert('Failed to add flight. Please try again.');
+    }
+  };
+
+  const handleDeleteHotel = async (hotelId) => {
+    try {
+      await deleteHotelFromFirestore(hotelId);
+    } catch (error) {
+      console.error('Failed to delete hotel:', error);
+    }
+  };
+
+  const normalizeHotelPayload = (payload = {}) => ({
+    name: payload.name || payload.hotelName || '',
+    address: payload.address || '',
+    city: payload.city || '',
+    state: payload.state || '',
+    country: payload.country || '',
+    checkIn: payload.checkIn || payload.checkInDate || '',
+    checkOut: payload.checkOut || payload.checkOutDate || '',
+    price: payload.price || payload.value || '',
+    priceCurrency: payload.priceCurrency || payload.currency || parseCurrencyFromPrice(payload.price || payload.value) || 'USD'
+  });
+
+  const extractHotelWithGemini = async ({ base64Data, mimeType }) => {
+    const apiKey = (import.meta.env.VITE_GEMINI_API_KEY || '').trim();
+    if (!apiKey) {
+      throw new Error('Add VITE_GEMINI_API_KEY in your env to enable file/image extraction with Gemini.');
+    }
+    const model = (import.meta.env.VITE_GEMINI_MODEL || 'gemini-2.5-flash-lite').trim();
+    const apiVersion = (import.meta.env.VITE_GEMINI_API_VERSION || 'v1').trim();
+    const prompt = 'Extract hotel booking details. Return ONLY a JSON object with keys: name (hotel name), address, city, state, country, checkIn (YYYY-MM-DD), checkOut (YYYY-MM-DD), price (numeric or string with currency), priceCurrency (3-letter ISO). Use empty strings when missing.';
+    const response = await fetch(`https://generativelanguage.googleapis.com/${apiVersion}/models/${model}:generateContent?key=${apiKey}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [
+          {
+            parts: [
+              { text: prompt },
+              { inline_data: { mime_type: mimeType || 'application/octet-stream', data: base64Data } }
+            ]
+          }
+        ]
+      })
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Gemini request failed (${response.status}): ${errorText || 'Unknown error'}`);
+    }
+    const data = await response.json();
+    const text = data.candidates?.[0]?.content?.parts?.map(part => part.text || '').join('\n') || '';
+    const parsed = tryParseJsonFromText(text);
+    if (!parsed) {
+      throw new Error('Gemini responded but no hotel details were parsed.');
+    }
+    return normalizeHotelPayload(parsed);
+  };
+
+  const handleHotelFileSelection = async (file) => {
+    if (!file) return;
+    setHotelDocPreview({
+      name: file.name,
+      type: file.type || 'unknown',
+      size: file.size
+    });
+    setHotelExtractError('');
+    setHotelExtracting(true);
+    if (file.type?.startsWith('image/')) {
+      setHotelImagePreview(URL.createObjectURL(file));
+    } else {
+      setHotelImagePreview('');
+    }
+
+    try {
+      const base64Data = await readFileAsBase64(file);
+      const extracted = await extractHotelWithGemini({ base64Data, mimeType: file.type });
+      setHotelForm(prev => ({
+        ...prev,
+        ...extracted
+      }));
+    } catch (error) {
+      console.error('Hotel extraction failed:', error);
+      setHotelExtractError(error.message || 'Unable to extract hotel details. Please fill manually.');
+    } finally {
+      setHotelExtracting(false);
+    }
+  };
+
+  const handleHotelPaste = async (event) => {
+    if (hotelInputMode !== 'image') return;
+    const items = event.clipboardData?.items;
+    if (!items) return;
+    const imageItem = Array.from(items).find(item => item.type.startsWith('image/'));
+    if (imageItem) {
+      event.preventDefault();
+      const file = imageItem.getAsFile();
+      if (file) {
+        await handleHotelFileSelection(file);
+      }
+    }
+  };
+
+  const handleAddHotel = async () => {
+    const newHotel = {
+      id: Date.now(),
+      ...hotelForm
+    };
+    try {
+      await saveHotel(newHotel);
+      setHotelForm({
+        name: '',
+        address: '',
+        city: '',
+        state: '',
+        country: '',
+        checkIn: '',
+        checkOut: '',
+        price: '',
+        priceCurrency: 'USD'
+      });
+      setHotelDocPreview(null);
+      setHotelImagePreview('');
+      setHotelExtractError('');
+      setHotelExtracting(false);
+      setHotelInputMode('manual');
+      setShowAddHotel(false);
+    } catch (error) {
+      console.error('Failed to add hotel:', error);
+      alert('Failed to add hotel. Please try again.');
     }
   };
 
@@ -2147,6 +2294,7 @@ const renderExpenseIcon = (category, size = 14) => {
     });
     return total;
   };
+  const getHotelsTotal = () => hotels.reduce((sum, hotel) => sum + convertAmountToBase(parsePriceValue(hotel.price), hotel.priceCurrency || 'EUR'), 0);
 
   const getPlaceCostsTotal = () => dailyPlans.reduce(
     (sum, day) => sum + day.places.reduce((acc, place) => acc + convertAmountToBase(parsePriceValue(place.cost), place.currency || 'EUR'), 0),
@@ -2154,7 +2302,7 @@ const renderExpenseIcon = (category, size = 14) => {
   );
 
   const getAllExpensesTotal = () =>
-    expenses.reduce((sum, e) => sum + convertAmountToBase(parseFloat(e.amount || 0), e.currency || 'EUR'), 0) + getFlightsTotal() + getPlaceCostsTotal();
+    expenses.reduce((sum, e) => sum + convertAmountToBase(parseFloat(e.amount || 0), e.currency || 'EUR'), 0) + getFlightsTotal() + getPlaceCostsTotal() + getHotelsTotal();
 
   const formatTotalExpenses = () => {
     const total = getAllExpensesTotal();
@@ -2173,6 +2321,10 @@ const renderExpenseIcon = (category, size = 14) => {
     const placeTotal = getPlaceCostsTotal();
     if (placeTotal > 0) {
       byCategory['places'] = placeTotal;
+    }
+    const hotelsTotal = getHotelsTotal();
+    if (hotelsTotal > 0) {
+      byCategory['hotels'] = hotelsTotal;
     }
     return byCategory;
   };
@@ -2197,6 +2349,11 @@ const renderExpenseIcon = (category, size = 14) => {
         });
       }
     });
+    hotels.forEach(hotel => {
+      if (hotel.city) {
+        byCity[hotel.city] = (byCity[hotel.city] || 0) + convertAmountToBase(parsePriceValue(hotel.price), hotel.priceCurrency || 'EUR');
+      }
+    });
     return byCity;
   };
 
@@ -2218,6 +2375,11 @@ const renderExpenseIcon = (category, size = 14) => {
             byCountry[loc.country] = (byCountry[loc.country] || 0) + convertAmountToBase(parsePriceValue(place.cost), place.currency || 'EUR');
           }
         });
+      }
+    });
+    hotels.forEach(hotel => {
+      if (hotel.country) {
+        byCountry[hotel.country] = (byCountry[hotel.country] || 0) + convertAmountToBase(parsePriceValue(hotel.price), hotel.priceCurrency || 'EUR');
       }
     });
     return byCountry;
@@ -2266,6 +2428,11 @@ const renderExpenseIcon = (category, size = 14) => {
         byDay[d] = (byDay[d] || 0) + convertAmountToBase(parsePriceValue(flight.price), flight.priceCurrency || 'EUR');
       }
     });
+    hotels.forEach(hotel => {
+      if (hotel.checkIn) {
+        byDay[hotel.checkIn] = (byDay[hotel.checkIn] || 0) + convertAmountToBase(parsePriceValue(hotel.price), hotel.priceCurrency || 'EUR');
+      }
+    });
     return byDay;
   };
 
@@ -2288,6 +2455,14 @@ const renderExpenseIcon = (category, size = 14) => {
         const label = labelParts.length ? labelParts.join(', ') : 'Unspecified';
         byLocation[label] = (byLocation[label] || 0) + convertAmountToBase(parsePriceValue(place.cost), place.currency || 'EUR');
       });
+    });
+    hotels.forEach(hotel => {
+      const city = hotel.city || '';
+      const state = hotel.state || '';
+      const country = hotel.country || '';
+      const labelParts = [city, state, country].filter(Boolean);
+      const label = labelParts.length ? labelParts.join(', ') : 'Unspecified';
+      byLocation[label] = (byLocation[label] || 0) + convertAmountToBase(parsePriceValue(hotel.price), hotel.priceCurrency || 'EUR');
     });
     return byLocation;
   };
@@ -2566,6 +2741,15 @@ const renderExpenseIcon = (category, size = 14) => {
             >
               <Plane size={20} />
               <span>Flights</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('hotels')}
+              className={`flex-1 px-3 sm:px-6 py-3 sm:py-4 font-medium flex items-center justify-center gap-2 whitespace-nowrap transition-all ${
+                activeTab === 'hotels' ? 'border-b-3 border-[#26DE81] text-[#26DE81]' : 'text-gray-600 hover:text-[#26DE81]'
+              }`}
+            >
+              <BedDouble size={20} />
+              <span>Hotels</span>
             </button>
             <button
               onClick={() => setActiveTab('expenses')}
@@ -3953,6 +4137,254 @@ const renderExpenseIcon = (category, size = 14) => {
               </div>
             )}
           </div>
+          )}
+
+          {/* HOTELS TAB */}
+          {activeTab === 'hotels' && (
+            <div className="space-y-4">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-2xl font-bold">Hotels</h2>
+                <button
+                  onClick={() => setShowAddHotel(true)}
+                  className="px-4 py-2 bg-gradient-to-r from-[#26DE81] to-[#1ABC9C] text-white rounded-xl hover:shadow-lg transition-all hover:scale-[1.02] flex items-center gap-2 font-medium"
+                >
+                  <Plus size={20} />
+                  Add Hotel
+                </button>
+              </div>
+
+              {hotels.length === 0 ? (
+                <div className="text-center py-12 text-gray-500">
+                  <BedDouble size={48} className="mx-auto mb-4 opacity-50 text-[#26DE81]" />
+                  <p>No hotels added yet. Click "Add Hotel" to get started.</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {hotels.map(hotel => (
+                    <div key={hotel.id} className="border-2 border-gray-100 rounded-xl p-4 hover:shadow-lg hover:border-[#26DE81]/30 transition-all">
+                      <div className="flex justify-between items-start">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-3 mb-2">
+                            <span className="font-bold text-lg">{hotel.name || 'Hotel'}</span>
+                            {hotel.price && (
+                              <span className="text-sm font-semibold text-[#1B7F79]">
+                                {formatFlightPrice(hotel.price, hotel.priceCurrency || 'USD')}
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-sm text-gray-700 flex gap-3 flex-wrap">
+                            {hotel.address && <span>📍 {hotel.address}</span>}
+                            {hotel.city && <span>🏙️ {hotel.city}</span>}
+                            {hotel.state && <span>🗺️ {hotel.state}</span>}
+                            {hotel.country && <span>🌍 {hotel.country}</span>}
+                          </div>
+                          <div className="text-sm text-gray-500 mt-2">
+                            {hotel.checkIn ? `Check-in: ${hotel.checkIn}` : 'Check-in not set'}
+                            {'  '}
+                            {hotel.checkOut ? `• Check-out: ${hotel.checkOut}` : ''}
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => handleDeleteHotel(hotel.id)}
+                          className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
+                        >
+                          <Trash2 size={18} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Add Hotel Modal */}
+              {showAddHotel && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                  <div className="bg-white rounded-2xl shadow-xl p-4 sm:p-5 max-w-3xl w-full max-h-[92vh] overflow-y-auto border border-gray-100">
+                    <div className="flex items-start justify-between gap-3 mb-3">
+                      <div>
+                        <p className="text-xs uppercase tracking-[0.12em] text-[#1B7F79] font-semibold">Hotels</p>
+                        <h3 className="text-xl sm:text-2xl font-bold text-gray-900">Add Hotel</h3>
+                      </div>
+                      <button
+                        onClick={() => {
+                          setShowAddHotel(false);
+                        }}
+                        className="p-2 rounded-full hover:bg-gray-100 text-gray-500"
+                      >
+                        <X size={18} />
+                      </button>
+                    </div>
+
+                    <div className="space-y-4">
+                      <div className="grid sm:grid-cols-3 gap-2 bg-gray-50 border border-gray-200 rounded-xl p-2">
+                        {[
+                          { key: 'manual', label: 'Manual', icon: <Edit3 size={16} /> },
+                          { key: 'pdf', label: 'PDF', icon: <FileText size={16} />, ai: true },
+                          { key: 'image', label: 'Image', icon: <ImageIcon size={16} />, ai: true }
+                        ].map(opt => (
+                          <button
+                            key={opt.key}
+                            onClick={() => setHotelInputMode(opt.key)}
+                            className={`flex items-center justify-center gap-2 px-3 py-2 rounded-lg border text-sm transition-all ${
+                              hotelInputMode === opt.key
+                                ? 'border-[#4ECDC4] bg-white shadow-sm text-[#1B7F79]'
+                                : 'border-transparent bg-gray-50 hover:border-gray-200 text-gray-700'
+                            }`}
+                          >
+                            {opt.icon}
+                            <span className="flex items-center gap-1">
+                              {opt.label}
+                              {opt.ai && <Sparkles size={14} className="text-[#4ECDC4]" />}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+
+                      {hotelInputMode !== 'manual' && (
+                        <div
+                          className="border border-gray-200 rounded-xl p-3 space-y-3 bg-gray-50"
+                          onPaste={hotelInputMode === 'image' ? handleHotelPaste : undefined}
+                        >
+                          <div className="flex items-center justify-between gap-2 flex-wrap">
+                            <div className="flex items-center gap-2 text-sm text-gray-700">
+                              <Upload size={16} className="text-[#4ECDC4]" />
+                              <span>{hotelInputMode === 'pdf' ? 'Upload booking PDF' : 'Upload or paste booking image'}</span>
+                            </div>
+                            <span className="text-xs text-gray-500">Cmd/Ctrl + V to paste</span>
+                          </div>
+                          <label className="inline-flex items-center gap-2 px-4 py-2 bg-white border rounded-lg cursor-pointer hover:border-[#4ECDC4] transition-colors text-sm">
+                            <Upload size={14} />
+                            <span>Select file</span>
+                            <input
+                              type="file"
+                              accept={hotelInputMode === 'pdf' ? 'application/pdf' : 'image/*'}
+                              className="hidden"
+                              onChange={(e) => handleHotelFileSelection(e.target.files?.[0] || null)}
+                            />
+                          </label>
+
+                          {hotelDocPreview && (
+                            <div className="flex items-center gap-2 text-sm text-gray-700">
+                              <FileText size={14} className="text-[#4ECDC4]" />
+                              <span>{hotelDocPreview.name}</span>
+                              <span className="text-gray-400">({hotelDocPreview.type})</span>
+                            </div>
+                          )}
+
+                          {hotelImagePreview && (
+                            <div className="rounded-lg overflow-hidden border bg-white">
+                              <img src={hotelImagePreview} alt="Hotel booking preview" className="max-h-48 w-full object-contain" />
+                            </div>
+                          )}
+
+                          {hotelExtracting && (
+                            <div className="flex items-center gap-2 text-sm text-[#1B7F79]">
+                              <Loader2 size={14} className="animate-spin" />
+                              Extracting details...
+                            </div>
+                          )}
+
+                          {hotelExtractError && (
+                            <div className="text-sm text-red-600">{hotelExtractError}</div>
+                          )}
+                        </div>
+                      )}
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <input
+                          type="text"
+                          placeholder="Hotel name *"
+                          value={hotelForm.name}
+                          onChange={(e) => setHotelForm({ ...hotelForm, name: e.target.value })}
+                          className="px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#4ECDC4] focus:border-[#4ECDC4] transition"
+                        />
+                        <input
+                          type="text"
+                          placeholder="Address"
+                          value={hotelForm.address}
+                          onChange={(e) => setHotelForm({ ...hotelForm, address: e.target.value })}
+                          className="px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#4ECDC4] focus:border-[#4ECDC4] transition"
+                        />
+                        <input
+                          type="text"
+                          placeholder="City"
+                          value={hotelForm.city}
+                          onChange={(e) => setHotelForm({ ...hotelForm, city: e.target.value })}
+                          className="px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#4ECDC4] focus:border-[#4ECDC4] transition"
+                        />
+                        <input
+                          type="text"
+                          placeholder="State"
+                          value={hotelForm.state}
+                          onChange={(e) => setHotelForm({ ...hotelForm, state: e.target.value })}
+                          className="px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#4ECDC4] focus:border-[#4ECDC4] transition"
+                        />
+                        <input
+                          type="text"
+                          placeholder="Country"
+                          value={hotelForm.country}
+                          onChange={(e) => setHotelForm({ ...hotelForm, country: e.target.value })}
+                          className="px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#4ECDC4] focus:border-[#4ECDC4] transition"
+                        />
+                        <input
+                          type="date"
+                          placeholder="Check-in"
+                          value={hotelForm.checkIn}
+                          onChange={(e) => setHotelForm({ ...hotelForm, checkIn: e.target.value })}
+                          className="px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#4ECDC4] focus:border-[#4ECDC4] transition"
+                        />
+                        <input
+                          type="date"
+                          placeholder="Check-out"
+                          value={hotelForm.checkOut}
+                          onChange={(e) => setHotelForm({ ...hotelForm, checkOut: e.target.value })}
+                          className="px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#4ECDC4] focus:border-[#4ECDC4] transition"
+                        />
+                        <div className="grid grid-cols-2 gap-2">
+                          <input
+                            type="text"
+                            placeholder="Price"
+                            value={hotelForm.price}
+                            onChange={(e) => setHotelForm({ ...hotelForm, price: e.target.value, priceCurrency: parseCurrencyFromPrice(e.target.value) || hotelForm.priceCurrency })}
+                            className="px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#4ECDC4] focus:border-[#4ECDC4] transition"
+                          />
+                          <select
+                            value={hotelForm.priceCurrency}
+                            onChange={(e) => setHotelForm({ ...hotelForm, priceCurrency: e.target.value })}
+                            className="px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[#4ECDC4] focus:border-[#4ECDC4] transition bg-white"
+                          >
+                            <option value="USD">USD</option>
+                            <option value="EUR">EUR</option>
+                            <option value="GBP">GBP</option>
+                            <option value="CHF">CHF</option>
+                            <option value="BRL">BRL</option>
+                            <option value="CAD">CAD</option>
+                            <option value="AUD">AUD</option>
+                            <option value="JPY">JPY</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-col sm:flex-row gap-3">
+                        <button
+                          onClick={handleAddHotel}
+                          disabled={!hotelForm.name || !hotelForm.checkIn || !hotelForm.checkOut}
+                          className="flex-1 px-4 py-3 bg-gradient-to-r from-[#26DE81] to-[#1ABC9C] text-white rounded-xl hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm sm:text-base font-semibold"
+                        >
+                          Save Hotel
+                        </button>
+                        <button
+                          onClick={() => setShowAddHotel(false)}
+                          className="flex-1 px-4 py-3 border-2 border-gray-200 rounded-xl hover:bg-gray-50 text-sm sm:text-base transition-all"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           )}
 
           {/* FLIGHTS TAB */}

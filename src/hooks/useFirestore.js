@@ -211,6 +211,68 @@ export const useFlights = () => {
   return { flights, loading, saveFlight, deleteFlight, setFlights, reloadFlights: loadFlights };
 };
 
+// Custom hook for hotels
+export const useHotels = () => {
+  const { currentUser } = useAuth();
+  const [hotels, setHotels] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!currentUser) {
+      setHotels([]);
+      setLoading(false);
+      return;
+    }
+
+    loadHotels();
+  }, [currentUser]);
+
+  const loadHotels = async () => {
+    try {
+      setLoading(true);
+      const hotelsRef = collection(db, 'users', currentUser.uid, 'hotels');
+      const querySnapshot = await getDocs(hotelsRef);
+      const hotelsData = querySnapshot.docs.map(doc => ({
+        ...doc.data(),
+        id: parseInt(doc.id)
+      }));
+      setHotels(hotelsData);
+    } catch (err) {
+      console.error('Error loading hotels:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const saveHotel = async (hotel) => {
+    try {
+      await setDoc(
+        doc(db, 'users', currentUser.uid, 'hotels', hotel.id.toString()),
+        {
+          ...hotel,
+          updatedAt: serverTimestamp()
+        }
+      );
+      await loadHotels();
+    } catch (err) {
+      console.error('Error saving hotel:', err);
+      throw err;
+    }
+  };
+
+  const deleteHotel = async (hotelId) => {
+    try {
+      await deleteDoc(doc(db, 'users', currentUser.uid, 'hotels', hotelId.toString()));
+      await loadHotels();
+    } catch (err) {
+      console.error('Error deleting hotel:', err);
+      throw err;
+    }
+  };
+
+  return { hotels, loading, saveHotel, deleteHotel, setHotels, reloadHotels: loadHotels };
+};
+
 // Custom hook for daily plans
 export const useDailyPlans = () => {
   const { currentUser } = useAuth();
