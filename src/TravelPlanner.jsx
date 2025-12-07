@@ -154,7 +154,10 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
   const [currencyPickerPosition, setCurrencyPickerPosition] = useState({ top: 0, left: 0 });
   const [focusedNotesEditor, setFocusedNotesEditor] = useState(null); // Store place ID of focused notes editor
   const [showEmojiPicker, setShowEmojiPicker] = useState(null); // Store place ID for emoji picker
+  const [openTimePicker, setOpenTimePicker] = useState(null); // {placeId, field}
+  const [timePickerPosition, setTimePickerPosition] = useState({ top: 0, left: 0 });
   const [googleMapsApiKey, setGoogleMapsApiKey] = useState(import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '');
+  const googleMapsMapId = (import.meta.env.VITE_GOOGLE_MAP_ID || '').trim();
   const [showApiKeyModal, setShowApiKeyModal] = useState(false);
   const [calculatingDistance, setCalculatingDistance] = useState(false);
   const [placeSearchTerm, setPlaceSearchTerm] = useState('');
@@ -182,6 +185,8 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
   const addMenuRef = useRef(null);
   const insertMenuRef = useRef(null);
   const dayChipsRef = useRef(null);
+  const timePickerRef = useRef(null);
+  const timePickerAnchorRef = useRef(null);
   const [editingDayTitle, setEditingDayTitle] = useState(false);
   const [dayTitleValue, setDayTitleValue] = useState('');
   const [tripForm, setTripForm] = useState({
@@ -270,16 +275,26 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
     };
   }, [insertingAtIndex]);
 
-  // Close time picker on outside click
+  // Close time picker on outside click (only while open, more resilient to nested elements)
   useEffect(() => {
+    if (!openTimePicker) return;
+
     const closePickers = (e) => {
-      if (timePickerRef.current && timePickerRef.current.contains(e.target)) return;
-      if (timePickerAnchorRef.current && timePickerAnchorRef.current.contains(e.target)) return;
+      const path = typeof e.composedPath === 'function' ? e.composedPath() : [];
+      const picker = timePickerRef.current;
+      const anchor = timePickerAnchorRef.current;
+
+      const clickedInsidePicker = picker && (picker.contains(e.target) || path.includes(picker));
+      const clickedAnchor = anchor && (anchor.contains(e.target) || path.includes(anchor));
+      if (clickedInsidePicker || clickedAnchor) return;
+
       setOpenTimePicker(null);
     };
-    document.addEventListener('mousedown', closePickers);
-    return () => document.removeEventListener('mousedown', closePickers);
-  }, []);
+
+    // Use pointerdown so we catch both mouse and touch interactions
+    document.addEventListener('pointerdown', closePickers, true);
+    return () => document.removeEventListener('pointerdown', closePickers, true);
+  }, [openTimePicker]);
 
   // Initialize day summaries immediately when day is selected
   useEffect(() => {
@@ -303,18 +318,28 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
 
   // Immediate update of cost when expenses change
   useEffect(() => {
-    if (selectedDay && daySummaries[selectedDay]) {
-      const totalCost = expenses.filter(e => e.dayId === selectedDay).reduce((sum, e) => sum + parseFloat(e.amount || 0), 0) || 0;
+    if (!selectedDay) return;
 
-      setDaySummaries(prev => ({
+    const totalCost = expenses
+      .filter(e => e.dayId === selectedDay)
+      .reduce((sum, e) => sum + parseFloat(e.amount || 0), 0) || 0;
+
+    // Avoid infinite render loops by only updating when the value actually changes
+    setDaySummaries(prev => {
+      const current = prev[selectedDay];
+      if (!current || current.totalCost === totalCost) {
+        return prev;
+      }
+
+      return {
         ...prev,
         [selectedDay]: {
-          ...prev[selectedDay],
+          ...current,
           totalCost
         }
-      }));
-    }
-  }, [expenses, selectedDay, daySummaries]);
+      };
+    });
+  }, [expenses, selectedDay]);
 
   // Debounced update of day summaries for places (3 seconds after changes)
   useEffect(() => {
@@ -944,10 +969,6 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
   const [mapPlaceholderDismissed, setMapPlaceholderDismissed] = useState(false);
   const [changingTransportMode, setChangingTransportMode] = useState(null); // {dayId, placeId}
   const [editingManualDistance, setEditingManualDistance] = useState(null); // {dayId, placeId, distance, time}
-  const [openTimePicker, setOpenTimePicker] = useState(null); // {placeId, field}
-  const [timePickerPosition, setTimePickerPosition] = useState({ top: 0, left: 0 });
-  const timePickerRef = useRef(null);
-  const timePickerAnchorRef = useRef(null);
 
   const waitForGoogleMaps = () => {
     if (mapsReady && window.google?.maps) {
@@ -1209,7 +1230,8 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
 
     const script = document.createElement('script');
     script.id = scriptId;
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${mapsApiKey}&libraries=places`;
+    // Include marker library to use AdvancedMarkerElement (recommended by Google Maps)
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${mapsApiKey}&libraries=places,marker`;
     script.async = true;
     script.defer = true;
     script.onload = () => setMapsReady(true);
@@ -1240,6 +1262,7 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
         mapTypeControl: false,
         streetViewControl: false,
         fullscreenControl: false,
+        mapId: googleMapsMapId || undefined
       });
 
       // Close info window when clicking on the map (not on a marker)
@@ -1257,7 +1280,13 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
   // Clear markers and routes when hiding the map
   useEffect(() => {
     if (showMapPanel) return;
-    markersRef.current.forEach(m => m.setMap(null));
+    markersRef.current.forEach(m => {
+      if (m && typeof m.setMap === 'function') {
+        m.setMap(null);
+      } else if (m) {
+        m.map = null;
+      }
+    });
     markersRef.current = [];
     directionsRenderersRef.current.forEach(r => r.setMap(null));
     directionsRenderersRef.current = [];
@@ -1266,7 +1295,13 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
   // Plot markers and routes for places on the selected day
   useEffect(() => {
     if (!showMapPanel || !mapsReady || !mapInstanceRef.current) return;
-    markersRef.current.forEach(m => m.setMap(null));
+    markersRef.current.forEach(m => {
+      if (typeof m.setMap === 'function') {
+        m.setMap(null);
+      } else {
+        m.map = null;
+      }
+    });
     markersRef.current = [];
     directionsRenderersRef.current.forEach(r => r.setMap(null));
     directionsRenderersRef.current = [];
@@ -1283,17 +1318,45 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
         : null;
 
       const handleMarker = (pos) => {
-        const marker = new window.google.maps.Marker({
-          map: mapInstanceRef.current,
-          position: pos,
-          title: place.name || place.address || 'Place',
-          label: {
-            text: `${index + 1}`,
-            color: 'white',
-            fontSize: '12px',
-            fontWeight: 'bold'
-          }
-        });
+        const canUseAdvanced = !!googleMapsMapId && window.google?.maps?.marker?.AdvancedMarkerElement;
+        let marker;
+
+        if (canUseAdvanced) {
+          // Custom content bubble to mimic label numbers
+          const labelEl = document.createElement('div');
+          labelEl.style.display = 'flex';
+          labelEl.style.alignItems = 'center';
+          labelEl.style.justifyContent = 'center';
+          labelEl.style.width = '32px';
+          labelEl.style.height = '32px';
+          labelEl.style.borderRadius = '999px';
+          labelEl.style.background = '#FF6B6B';
+          labelEl.style.color = 'white';
+          labelEl.style.fontWeight = '700';
+          labelEl.style.fontSize = '13px';
+          labelEl.style.boxShadow = '0 6px 18px rgba(0,0,0,0.18)';
+          labelEl.textContent = `${index + 1}`;
+
+          marker = new window.google.maps.marker.AdvancedMarkerElement({
+            map: mapInstanceRef.current,
+            position: pos,
+            title: place.name || place.address || 'Place',
+            content: labelEl
+          });
+        } else {
+          // Fallback to classic marker (no Map ID required)
+          marker = new window.google.maps.Marker({
+            map: mapInstanceRef.current,
+            position: pos,
+            title: place.name || place.address || 'Place',
+            label: {
+              text: `${index + 1}`,
+              color: 'white',
+              fontSize: '12px',
+              fontWeight: 'bold'
+            }
+          });
+        }
         const getTypeIcon = (type) => {
           const icons = {
             'place': '🏛️',
