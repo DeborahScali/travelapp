@@ -111,10 +111,6 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
   const [isDragging, setIsDragging] = useState(false); // Track if currently dragging
   const [insertingAtIndex, setInsertingAtIndex] = useState(null); // Track where to insert new place
   const [daySummaries, setDaySummaries] = useState({}); // Debounced summaries per day
-  const [citySearchTerm, setCitySearchTerm] = useState('');
-  const [countrySearchTerm, setCountrySearchTerm] = useState('');
-  const [showCitySuggestions, setShowCitySuggestions] = useState(false);
-  const [showCountrySuggestions, setShowCountrySuggestions] = useState(false);
   const [expenseCitySearch, setExpenseCitySearch] = useState('');
   const [expenseCountrySearch, setExpenseCountrySearch] = useState('');
   const [showExpenseCitySuggestions, setShowExpenseCitySuggestions] = useState(false);
@@ -1362,26 +1358,6 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
       .filter(country => country.toLowerCase().includes(term));
   };
 
-  // Handle city selection for daily plan
-  const handleCitySelect = (city, country) => {
-    const updated = dailyPlans.map(d => 
-      d.id === selectedDay ? { ...d, city, country } : d
-    );
-    setDailyPlans(updated);
-    setCitySearchTerm('');
-    setShowCitySuggestions(false);
-  };
-
-  // Handle country selection for daily plan
-  const handleCountrySelect = (country) => {
-    const updated = dailyPlans.map(d => 
-      d.id === selectedDay ? { ...d, country } : d
-    );
-    setDailyPlans(updated);
-    setCountrySearchTerm('');
-    setShowCountrySuggestions(false);
-  };
-
   // Handle trip edit
   const handleEditTrip = () => {
     setTripForm({
@@ -1975,76 +1951,6 @@ const parseLocalDate = (value) => {
                       )}
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
-                      {/* City Autocomplete */}
-                      <div className="relative">
-                        <input
-                          type="text"
-                          placeholder="City"
-                          value={citySearchTerm || selectedDayData.city}
-                          onChange={(e) => {
-                            setCitySearchTerm(e.target.value);
-                            setShowCitySuggestions(true);
-                            // Also update the actual city value for manual entry
-                            const updated = dailyPlans.map(d => 
-                              d.id === selectedDay ? { ...d, city: e.target.value } : d
-                            );
-                            setDailyPlans(updated);
-                          }}
-                          onFocus={() => setShowCitySuggestions(true)}
-                          onBlur={() => setTimeout(() => setShowCitySuggestions(false), 200)}
-                          className="w-full px-3 py-2 border rounded-lg"
-                        />
-                        {showCitySuggestions && citySearchTerm && getFilteredCities(citySearchTerm).length > 0 && (
-                          <div className="absolute z-10 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                            {getFilteredCities(citySearchTerm).map(({ city, country }, index) => (
-                              <button
-                                key={index}
-                                onClick={() => handleCitySelect(city, country)}
-                                className="w-full px-3 py-2 text-left hover:bg-indigo-50 flex justify-between items-center"
-                              >
-                                <span className="font-medium">{city}</span>
-                                <span className="text-sm text-gray-500">{country}</span>
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Country Autocomplete */}
-                      <div className="relative">
-                        <input
-                          type="text"
-                          placeholder="Country"
-                          value={countrySearchTerm || selectedDayData.country}
-                          onChange={(e) => {
-                            setCountrySearchTerm(e.target.value);
-                            setShowCountrySuggestions(true);
-                            // Also update the actual country value for manual entry
-                            const updated = dailyPlans.map(d => 
-                              d.id === selectedDay ? { ...d, country: e.target.value } : d
-                            );
-                            setDailyPlans(updated);
-                          }}
-                          onFocus={() => setShowCountrySuggestions(true)}
-                          onBlur={() => setTimeout(() => setShowCountrySuggestions(false), 200)}
-                          className="w-full px-3 py-2 border rounded-lg"
-                        />
-                        {showCountrySuggestions && countrySearchTerm && getFilteredCountries(countrySearchTerm).length > 0 && (
-                          <div className="absolute z-10 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                            {getFilteredCountries(countrySearchTerm).map((country, index) => (
-                              <button
-                                key={index}
-                                onClick={() => handleCountrySelect(country)}
-                                className="w-full px-3 py-2 text-left hover:bg-indigo-50"
-                              >
-                                {country}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </div>
                   </div>
 
                   {/* Places List */}
