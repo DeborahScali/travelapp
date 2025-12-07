@@ -130,6 +130,17 @@ const parsePriceValue = (value) => {
   return Number.isFinite(num) ? num : 0;
 };
 
+const CURRENCY_RATES_EUR = {
+  EUR: 1,
+  USD: 0.92,
+  GBP: 1.17,
+  CHF: 1.03,
+  BRL: 0.18,
+  CAD: 0.67,
+  AUD: 0.61,
+  JPY: 0.0061
+};
+
 const formatFlightPrice = (price, currency) => {
   const code = currency || parseCurrencyFromPrice(price) || '';
   const numeric = parsePriceValue(price);
@@ -563,6 +574,7 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
     currency: 'USD'
   });
   const [expenseSummaryMode, setExpenseSummaryMode] = useState('category'); // category | day | location
+  const [baseCurrency, setBaseCurrency] = useState('EUR');
 
   const normalizeFlightPayload = (payload = {}) => ({
     airline: payload.airline || '',
@@ -1997,6 +2009,18 @@ const parseLocalDate = (value) => {
     window.open(`https://www.google.com/maps/search/?api=1&query=${encodedAddress}`, '_blank');
   };
 
+  const convertAmountToBase = (amount, currency) => {
+    const from = (currency || baseCurrency || 'EUR').toUpperCase();
+    const to = (baseCurrency || 'EUR').toUpperCase();
+    const fromRate = CURRENCY_RATES_EUR[from] || 1;
+    const toRate = CURRENCY_RATES_EUR[to] || 1;
+    return (amount * fromRate) / toRate;
+  };
+
+const formatBaseAmount = (amount) => {
+  return `${amount.toFixed(2)}`;
+};
+
   const getRouteInGoogleMaps = (origin, destination) => {
     const encodeLocation = (loc) => {
       if (loc && typeof loc === 'object' && typeof loc.lat === 'number' && typeof loc.lng === 'number') {
@@ -2022,22 +2046,28 @@ const parseLocalDate = (value) => {
   }, []);
 
   // Analytics calculations
-  const getFlightsTotal = () => flights.reduce((sum, flight) => sum + parsePriceValue(flight.price), 0);
+  const getFlightsTotal = () => flights.reduce((sum, flight) => {
+    const amount = parsePriceValue(flight.price);
+    return sum + convertAmountToBase(amount, flight.priceCurrency || 'EUR');
+  }, 0);
+
   const getPlaceCostsTotal = () => dailyPlans.reduce(
-    (sum, day) => sum + day.places.reduce((acc, place) => acc + parsePriceValue(place.cost), 0),
+    (sum, day) => sum + day.places.reduce((acc, place) => acc + convertAmountToBase(parsePriceValue(place.cost), place.currency || 'EUR'), 0),
     0
   );
+
   const getAllExpensesTotal = () =>
-    expenses.reduce((sum, e) => sum + parseFloat(e.amount || 0), 0) + getFlightsTotal() + getPlaceCostsTotal();
+    expenses.reduce((sum, e) => sum + convertAmountToBase(parseFloat(e.amount || 0), e.currency || 'EUR'), 0) + getFlightsTotal() + getPlaceCostsTotal();
+
   const formatTotalExpenses = () => {
     const total = getAllExpensesTotal();
-    return `€${total.toFixed(2)}`;
+    return formatBaseAmount(total);
   };
 
   const getTotalExpensesByCategory = () => {
     const byCategory = {};
     expenses.forEach(exp => {
-      byCategory[exp.category] = (byCategory[exp.category] || 0) + parseFloat(exp.amount || 0);
+      byCategory[exp.category] = (byCategory[exp.category] || 0) + convertAmountToBase(parseFloat(exp.amount || 0), exp.currency || 'EUR');
     });
     const flightsTotal = getFlightsTotal();
     if (flightsTotal > 0) {
@@ -2054,12 +2084,12 @@ const parseLocalDate = (value) => {
     const byCity = {};
     expenses.forEach(exp => {
       if (exp.city) {
-        byCity[exp.city] = (byCity[exp.city] || 0) + parseFloat(exp.amount || 0);
+        byCity[exp.city] = (byCity[exp.city] || 0) + convertAmountToBase(parseFloat(exp.amount || 0), exp.currency || 'EUR');
       }
     });
     dailyPlans.forEach(day => {
       if (day.city) {
-        const dayPlaceTotal = day.places.reduce((sum, p) => sum + parsePriceValue(p.cost), 0);
+        const dayPlaceTotal = day.places.reduce((sum, p) => sum + convertAmountToBase(parsePriceValue(p.cost), p.currency || 'EUR'), 0);
         byCity[day.city] = (byCity[day.city] || 0) + dayPlaceTotal;
       }
     });
@@ -2070,12 +2100,12 @@ const parseLocalDate = (value) => {
     const byCountry = {};
     expenses.forEach(exp => {
       if (exp.country) {
-        byCountry[exp.country] = (byCountry[exp.country] || 0) + parseFloat(exp.amount || 0);
+        byCountry[exp.country] = (byCountry[exp.country] || 0) + convertAmountToBase(parseFloat(exp.amount || 0), exp.currency || 'EUR');
       }
     });
     dailyPlans.forEach(day => {
       if (day.country) {
-        const dayPlaceTotal = day.places.reduce((sum, p) => sum + parsePriceValue(p.cost), 0);
+        const dayPlaceTotal = day.places.reduce((sum, p) => sum + convertAmountToBase(parsePriceValue(p.cost), p.currency || 'EUR'), 0);
         byCountry[day.country] = (byCountry[day.country] || 0) + dayPlaceTotal;
       }
     });
@@ -2110,11 +2140,11 @@ const parseLocalDate = (value) => {
     const byDay = {};
     expenses.forEach(exp => {
       if (exp.date) {
-        byDay[exp.date] = (byDay[exp.date] || 0) + parseFloat(exp.amount || 0);
+        byDay[exp.date] = (byDay[exp.date] || 0) + convertAmountToBase(parseFloat(exp.amount || 0), exp.currency || 'EUR');
       }
     });
     dailyPlans.forEach(day => {
-      const dayTotal = day.places.reduce((sum, p) => sum + parsePriceValue(p.cost), 0);
+      const dayTotal = day.places.reduce((sum, p) => sum + convertAmountToBase(parsePriceValue(p.cost), p.currency || 'EUR'), 0);
       if (day.date) {
         byDay[day.date] = (byDay[day.date] || 0) + dayTotal;
       }
@@ -2122,7 +2152,7 @@ const parseLocalDate = (value) => {
     flights.forEach(flight => {
       const d = flight.departureDate || flight.date;
       if (d) {
-        byDay[d] = (byDay[d] || 0) + parsePriceValue(flight.price);
+        byDay[d] = (byDay[d] || 0) + convertAmountToBase(parsePriceValue(flight.price), flight.priceCurrency || 'EUR');
       }
     });
     return byDay;
@@ -2134,10 +2164,10 @@ const parseLocalDate = (value) => {
       const city = exp.city || '';
       const country = exp.country || '';
       const label = city && country ? `${city}, ${country}` : city || country || 'Unspecified';
-      byLocation[label] = (byLocation[label] || 0) + parseFloat(exp.amount || 0);
+      byLocation[label] = (byLocation[label] || 0) + convertAmountToBase(parseFloat(exp.amount || 0), exp.currency || 'EUR');
     });
     dailyPlans.forEach(day => {
-      const dayTotal = day.places.reduce((sum, p) => sum + parsePriceValue(p.cost), 0);
+      const dayTotal = day.places.reduce((sum, p) => sum + convertAmountToBase(parsePriceValue(p.cost), p.currency || 'EUR'), 0);
       const city = day.city || '';
       const country = day.country || '';
       const label = city && country ? `${city}, ${country}` : city || country || 'Unspecified';
@@ -2178,7 +2208,7 @@ const parseLocalDate = (value) => {
                   />
                 </div>
                 <div className="text-sm font-semibold text-gray-800 whitespace-nowrap">
-                  ${value.toFixed(2)}
+                  {formatBaseAmount(value)}
                 </div>
               </div>
             );
@@ -2278,23 +2308,11 @@ const parseLocalDate = (value) => {
                     )}
                   </div>
 
-                  {/* Trip Totals */}
-                  <div className="flex flex-wrap items-center gap-2 pt-1">
-                    <div className="flex items-center gap-2 bg-[#4ECDC4]/10 text-[#1B7F79] border border-[#4ECDC4]/30 rounded-full px-3 py-1 text-sm font-semibold">
-                      <DollarSign size={14} />
-                      <span>Total Expenses</span>
-                      <span>{formatTotalExpenses()}</span>
-                    </div>
-                    <div className="flex items-center gap-2 bg-gray-100 text-gray-700 border border-gray-200 rounded-full px-3 py-1 text-sm">
-                      <Plane size={14} className="text-[#4ECDC4]" />
-                      <span>Flights</span>
-                      <span>€{getFlightsTotal().toFixed(2)}</span>
-                    </div>
-                  </div>
                 </div>
               )}
             </div>
-            <div className="flex gap-2 items-center relative">
+            <div className="flex flex-col items-end gap-3 w-full sm:w-auto">
+              <div className="flex gap-2 items-center self-end">
               {/* Back button */}
               <button
                 onClick={async () => {
@@ -2385,6 +2403,27 @@ const parseLocalDate = (value) => {
                   )}
                 </div>
               )}
+              </div>
+
+              <div className="flex items-center gap-2 bg-[#4ECDC4]/10 text-[#1B7F79] border border-[#4ECDC4]/30 rounded-full px-3 py-1 text-sm font-semibold self-end">
+                <DollarSign size={14} />
+                <span>Total Expenses</span>
+                <span>{formatTotalExpenses()}</span>
+                <select
+                  value={baseCurrency}
+                  onChange={(e) => setBaseCurrency(e.target.value)}
+                  className="bg-transparent border border-transparent text-[#0b6559] text-xs font-semibold focus:outline-none cursor-pointer rounded"
+                >
+                  <option value="EUR">EUR</option>
+                  <option value="USD">USD</option>
+                  <option value="GBP">GBP</option>
+                  <option value="CHF">CHF</option>
+                  <option value="BRL">BRL</option>
+                  <option value="CAD">CAD</option>
+                  <option value="AUD">AUD</option>
+                  <option value="JPY">JPY</option>
+                </select>
+              </div>
             </div>
           </div>
           
@@ -4096,7 +4135,24 @@ const parseLocalDate = (value) => {
                   <div className="flex items-center gap-2 bg-gray-100 text-gray-700 border border-gray-200 rounded-full px-3 py-1 text-sm">
                     <Plane size={14} className="text-[#4ECDC4]" />
                     <span>Flights</span>
-                    <span>€{getFlightsTotal().toFixed(2)}</span>
+                    <span>{formatBaseAmount(getFlightsTotal())}</span>
+                  </div>
+                  <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-full px-3 py-1 text-sm">
+                    <span className="text-gray-600">Base currency</span>
+                    <select
+                      value={baseCurrency}
+                      onChange={(e) => setBaseCurrency(e.target.value)}
+                      className="bg-transparent outline-none font-semibold text-gray-900"
+                    >
+                      <option value="EUR">EUR</option>
+                      <option value="USD">USD</option>
+                      <option value="GBP">GBP</option>
+                      <option value="CHF">CHF</option>
+                      <option value="BRL">BRL</option>
+                      <option value="CAD">CAD</option>
+                      <option value="AUD">AUD</option>
+                      <option value="JPY">JPY</option>
+                    </select>
                   </div>
                 </div>
                 <button
