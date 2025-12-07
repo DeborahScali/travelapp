@@ -254,6 +254,39 @@ const buildTimeValue = (hour, minute) => {
   return `${hh}:${mm}`;
 };
 
+const computeDistanceByMode = (places = []) => {
+  const totals = {
+    walking: 0,
+    car: 0,
+    transit: 0,
+    plane: 0
+  };
+
+  places.forEach((place) => {
+    const raw = parseFloat(place.distance || 0);
+    if (!Number.isFinite(raw) || raw <= 0) return;
+    const mode = place.transportMode;
+    if (mode === 'car') {
+      totals.car += raw;
+      return;
+    }
+    if (mode === 'transit' || mode === 'bus' || mode === 'metro' || mode === 'train') {
+      totals.transit += raw;
+      return;
+    }
+    if (mode === 'plane') {
+      totals.plane += raw;
+      return;
+    }
+    if (mode === 'walking') {
+      totals.walking += raw;
+    }
+  });
+
+  totals.all = Object.values(totals).reduce((sum, val) => (typeof val === 'number' ? sum + val : sum), 0);
+  return totals;
+};
+
 
 const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMode = () => {} }) => {
   // Authentication
@@ -324,6 +357,16 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
   const selectedDayData = useMemo(() => {
     return dailyPlans.find(d => d.id === selectedDay);
   }, [dailyPlans, selectedDay]);
+
+  const flightsForSelectedDay = useMemo(() => {
+    if (!selectedDayData) return [];
+    const dayKey = normalizeDateKey(selectedDayData.date);
+    return flights.filter((flight) => {
+      const departureKey = normalizeDateKey(flight.departureDate || flight.date);
+      const arrivalKey = normalizeDateKey(flight.arrivalDate);
+      return departureKey === dayKey || arrivalKey === dayKey;
+    });
+  }, [flights, selectedDayData]);
 
   const scrollDayChips = (direction) => {
     const container = dayChipsRef.current;
@@ -424,7 +467,8 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
   useEffect(() => {
     if (selectedDay && selectedDayData && !daySummaries[selectedDay]) {
       const totalStops = selectedDayData.places?.length || 0;
-      const totalDistance = selectedDayData.places?.reduce((sum, p) => sum + parseFloat(p.distance || 0), 0) || 0;
+      const distanceByMode = computeDistanceByMode(selectedDayData.places);
+      const totalDistance = distanceByMode.all || 0;
       const totalTime = selectedDayData.places?.reduce((sum, p) => sum + parseFloat(p.transportTime || 0), 0) || 0;
       const placeCost = selectedDayData.places?.reduce((sum, p) => sum + (parseFloat(p.cost || 0) || 0), 0) || 0;
       const expenseCost = expenses.filter(e => e.dayId === selectedDay).reduce((sum, e) => sum + (parseFloat(e.amount || 0) || 0), 0) || 0;
@@ -436,7 +480,8 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
           totalStops,
           totalDistance,
           totalTime,
-          totalCost
+          totalCost,
+          distanceByMode
         }
       }));
     }
@@ -447,6 +492,8 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
     if (!selectedDay || !selectedDayData) return;
 
     const placeCost = selectedDayData.places?.reduce((sum, p) => sum + (parseFloat(p.cost || 0) || 0), 0) || 0;
+    const distanceByMode = computeDistanceByMode(selectedDayData.places);
+    const totalDistance = distanceByMode.all || 0;
     const expenseCost = expenses
       .filter(e => e.dayId === selectedDay)
       .reduce((sum, e) => sum + (parseFloat(e.amount || 0) || 0), 0) || 0;
@@ -455,7 +502,7 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
     // Avoid infinite render loops by only updating when the value actually changes
     setDaySummaries(prev => {
       const current = prev[selectedDay];
-      if (!current || current.totalCost === totalCost) {
+      if (!current || (current.totalCost === totalCost && current.totalDistance === totalDistance)) {
         return prev;
       }
 
@@ -463,7 +510,9 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
         ...prev,
         [selectedDay]: {
           ...current,
-          totalCost
+          totalCost,
+          totalDistance,
+          distanceByMode
         }
       };
     });
@@ -474,7 +523,8 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
     const timeoutId = setTimeout(() => {
       if (selectedDay && selectedDayData) {
         const totalStops = selectedDayData.places?.length || 0;
-        const totalDistance = selectedDayData.places?.reduce((sum, p) => sum + parseFloat(p.distance || 0), 0) || 0;
+        const distanceByMode = computeDistanceByMode(selectedDayData.places);
+        const totalDistance = distanceByMode.all || 0;
         const totalTime = selectedDayData.places?.reduce((sum, p) => sum + parseFloat(p.transportTime || 0), 0) || 0;
 
         setDaySummaries(prev => ({
@@ -483,7 +533,8 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
             ...prev[selectedDay],
             totalStops,
             totalDistance,
-            totalTime
+            totalTime,
+            distanceByMode
           }
         }));
       }
@@ -2852,16 +2903,6 @@ const renderExpenseIcon = (category, size = 14) => {
               <DollarSign size={20} />
               <span>Expenses</span>
             </button>
-            <button
-              onClick={() => setActiveTab('analytics')}
-              className={`flex-1 px-3 sm:px-6 py-3 sm:py-4 font-medium flex items-center justify-center gap-2 whitespace-nowrap transition-all ${
-                activeTab === 'analytics' ? 'border-b-3 border-[#26DE81] text-[#26DE81]' : 'text-gray-600 hover:text-[#26DE81]'
-              }`}
-            >
-              <TrendingUp size={20} />
-              <span className="hidden sm:inline">Analytics</span>
-              <span className="sm:hidden">Stats</span>
-            </button>
           </div>
         </div>
 
@@ -2979,10 +3020,10 @@ const renderExpenseIcon = (category, size = 14) => {
                           <FaMapMarkerAlt className="text-[#FF6B6B]" size={14} />
                           <span className="font-semibold">{daySummaries[selectedDay]?.totalStops ?? 0}</span>
                         </div>
-                        <div className="flex items-center gap-1 bg-white/70 px-3 py-1.5 rounded-full border border-gray-100 shadow-sm" title="Total walking distance">
-                          <span>🚶</span>
+                        <div className="flex items-center gap-1 bg-white/70 px-3 py-1.5 rounded-full border border-gray-100 shadow-sm" title="Walking distance">
+                          <FaWalking className="text-[#4ECDC4]" size={14} />
                           <span className="font-semibold">
-                            {(daySummaries[selectedDay]?.totalDistance ?? 0).toFixed(1)} km
+                            {(daySummaries[selectedDay]?.distanceByMode?.walking ?? 0).toFixed(1)} km
                           </span>
                         </div>
                         <div className="flex items-center gap-1 bg-white/70 px-3 py-1.5 rounded-full border border-gray-100 shadow-sm" title="Estimated total time">
@@ -3003,6 +3044,44 @@ const renderExpenseIcon = (category, size = 14) => {
 
                   {/* Places List */}
                   <div className="space-y-3 p-3 sm:p-5 bg-white">
+                    {flightsForSelectedDay.length > 0 && (
+                      <div className="space-y-2">
+                        {flightsForSelectedDay.map((flight) => {
+                          const timeLabel = formatTimeRange(flight.departureTime, flight.arrivalTime)
+                            || formatTimeDisplay(flight.departureTime)
+                            || formatTimeDisplay(flight.arrivalTime)
+                            || 'Time TBA';
+                          const routeLabel = flight.from && flight.to
+                            ? `${flight.from} → ${flight.to}`
+                            : (flight.from || flight.to || 'Flight');
+
+                          return (
+                            <div key={`flight-${flight.id}`} className="rounded-xl bg-white border border-gray-200 shadow-sm px-3 py-2 flex items-center justify-between">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <div className="w-9 h-9 rounded-lg bg-[#4ECDC4]/10 flex items-center justify-center text-[#0b6559]">
+                                  <Plane size={16} />
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="text-sm font-semibold text-gray-900 truncate">
+                                    {routeLabel}
+                                  </p>
+                                  {flight.flightNumber && (
+                                    <p className="text-[11px] text-gray-600 truncate">{flight.flightNumber}</p>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <div className="text-sm font-bold text-[#0b6559] leading-tight">{timeLabel}</div>
+                                {flight.airline && (
+                                  <div className="text-[11px] text-gray-500">{flight.airline}</div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
                     {selectedDayData.places.map((place, index) => (
                       <React.Fragment key={place.id}>
                         {/* Transportation Info - Between places */}
@@ -5182,7 +5261,7 @@ const renderExpenseIcon = (category, size = 14) => {
           )}
 
           {/* ANALYTICS TAB */}
-          {activeTab === 'analytics' && (
+          {false && activeTab === 'analytics' && (
             <div className="space-y-6">
               <h2 className="text-2xl font-bold">Analytics & Insights</h2>
 
