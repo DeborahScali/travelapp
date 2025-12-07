@@ -4,7 +4,7 @@ import 'react-date-range/dist/styles.css';
 import 'react-date-range/dist/theme/default.css';
 import { Plus, Trash2, MapPin, Plane, DollarSign, TrendingUp, Calendar, Map as MapIcon, LogOut, User, ArrowLeft, X, ChevronDown, Coffee, StickyNote, Camera, Building } from 'lucide-react';
 import { FaWalking, FaSubway, FaCar, FaUtensils, FaMapMarkerAlt, FaMapMarkedAlt } from 'react-icons/fa';
-import { FaStar } from 'react-icons/fa6';
+import { FaStar, FaLocationPin } from 'react-icons/fa6';
 import { TbTimeDuration30 } from 'react-icons/tb';
 import { MdAttachMoney, MdDragIndicator } from 'react-icons/md';
 import { IoIosAddCircle } from 'react-icons/io';
@@ -2356,13 +2356,27 @@ const parseLocalDate = (value) => {
                         )}
 
                         {/* Place Card with Drag Indicator */}
-                        <div className="flex items-start gap-2 group">
-                          {/* Drag Indicator - Outside on the left */}
-                          {!place.visited && (
-                            <div className="flex-shrink-0 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                              <MdDragIndicator size={16} className="text-gray-400 cursor-grab active:cursor-grabbing" />
+                        <div className="flex items-stretch gap-2 group relative">
+                          {/* Number + drag column */}
+                          <div className="flex-shrink-0 w-9 flex flex-col items-center relative">
+                            <div className="w-8 h-8 flex items-center justify-center mb-1">
+                              <div className="relative w-8 h-8 flex items-center justify-center text-[#FF6B6B]">
+                                <FaLocationPin size={28} />
+                                <span className="absolute text-[12px] font-bold text-white top-1.5">
+                                  {index + 1}
+                                </span>
+                              </div>
                             </div>
-                          )}
+                            {!place.visited && (
+                              <button
+                                onMouseDown={(e) => e.preventDefault()}
+                                className="absolute left-1/2 -translate-x-1/2 -translate-y-1/2 top-1/2 opacity-0 group-hover:opacity-100 transition-opacity"
+                                title="Drag to reorder"
+                              >
+                                <MdDragIndicator size={16} className="text-gray-400 cursor-grab active:cursor-grabbing" />
+                              </button>
+                            )}
+                          </div>
 
                           {/* Place Card */}
                           <div
@@ -2429,9 +2443,6 @@ const parseLocalDate = (value) => {
                                 {/* Place Info */}
                                 <div className="flex-1 min-w-0">
                                   <div className="flex items-center gap-2 mb-2 flex-wrap">
-                                    <span className="bg-gradient-to-r from-[#FF6B6B]/10 to-[#FFE66D]/10 text-[#FF6B6B] px-2 py-1 rounded-full text-xs sm:text-sm font-medium">
-                                      #{index + 1}
-                                    </span>
                                     <h4 className="font-bold text-base sm:text-lg">
                                       {place.name}
                                     </h4>
