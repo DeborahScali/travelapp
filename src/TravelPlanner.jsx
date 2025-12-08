@@ -762,21 +762,27 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
   const [expenseSummaryMode, setExpenseSummaryMode] = useState('category'); // category | day | location
   const [baseCurrency, setBaseCurrency] = useState('EUR');
 
-  const normalizeFlightPayload = (payload = {}) => ({
-    airline: payload.airline || '',
-    flightNumber: payload.flightNumber || '',
-    from: payload.from || '',
-    to: payload.to || '',
-    departureDate: payload.departureDate || payload.date || '',
-    arrivalDate: payload.arrivalDate || '',
-    date: payload.date || payload.departureDate || '',
-    departureTime: payload.departureTime || '',
-    arrivalTime: payload.arrivalTime || '',
-    bookingRef: payload.bookingRef || '',
-    price: payload.price || payload.value || '',
-    priceCurrency: payload.priceCurrency || payload.currency || parseCurrencyFromPrice(payload.price || payload.value) || 'USD',
-    segments: payload.segments || []
-  });
+  const normalizeFlightPayload = (payload = {}) => {
+    const departureDate = resolveDateWithClosestYear(payload.departureDate || payload.date || '');
+    const arrivalDate = resolveDateWithClosestYear(payload.arrivalDate || '');
+    const baseDate = resolveDateWithClosestYear(payload.date || payload.departureDate || '');
+
+    return {
+      airline: payload.airline || '',
+      flightNumber: payload.flightNumber || '',
+      from: payload.from || '',
+      to: payload.to || '',
+      departureDate,
+      arrivalDate,
+      date: baseDate,
+      departureTime: payload.departureTime || '',
+      arrivalTime: payload.arrivalTime || '',
+      bookingRef: payload.bookingRef || '',
+      price: payload.price || payload.value || '',
+      priceCurrency: payload.priceCurrency || payload.currency || parseCurrencyFromPrice(payload.price || payload.value) || 'USD',
+      segments: payload.segments || []
+    };
+  };
 
   const readFileAsBase64 = (file) => new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -1053,8 +1059,8 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
       city: payload.city || '',
       state: payload.state || '',
       country: payload.country || '',
-      checkIn: payload.checkIn || payload.checkInDate || '',
-      checkOut: payload.checkOut || payload.checkOutDate || '',
+      checkIn: resolveDateWithClosestYear(payload.checkIn || payload.checkInDate || ''),
+      checkOut: resolveDateWithClosestYear(payload.checkOut || payload.checkOutDate || ''),
       price: totalPrice,
       priceCurrency: currencyGuess,
       amounts: candidates
@@ -2479,6 +2485,46 @@ const parseLocalDate = (value) => {
   }
   return new Date(value);
 };
+
+  const resolveDateWithClosestYear = (value) => {
+    if (!value) return '';
+    const str = String(value).trim();
+    if (/\d{4}/.test(str)) {
+      const d = new Date(str);
+      return Number.isNaN(d.getTime()) ? str : formatDateLocal(d);
+    }
+
+    const parts = str.split(/[-/]/).map(Number);
+    if (parts.length < 2) return str;
+
+    const [a, b] = parts;
+    if (Number.isNaN(a) || Number.isNaN(b)) return str;
+
+    let month = a;
+    let day = b;
+    if (a > 12 && b <= 12) {
+      day = a;
+      month = b;
+    } else if (b > 12 && a <= 12) {
+      month = a;
+      day = b;
+    }
+
+    const today = new Date();
+    const year = today.getFullYear();
+    const candidates = [year - 1, year, year + 1]
+      .map(y => new Date(y, (month || 1) - 1, day || 1))
+      .filter(d => !Number.isNaN(d.getTime()));
+
+    if (!candidates.length) return str;
+
+    const closest = candidates.reduce((best, d) => {
+      const diff = Math.abs(d.getTime() - today.getTime());
+      return diff < best.diff ? { date: d, diff } : best;
+    }, { date: candidates[0], diff: Math.abs(candidates[0].getTime() - today.getTime()) }).date;
+
+    return formatDateLocal(closest);
+  };
 
   const handleSaveTripName = async () => {
     if (tripForm.name.trim() && currentTrip) {
