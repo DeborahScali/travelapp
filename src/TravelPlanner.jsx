@@ -344,6 +344,10 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
   const dayChipsRef = useRef(null);
   const timePickerRef = useRef(null);
   const timePickerAnchorRef = useRef(null);
+  const geocodeCacheRef = useRef(new Map());
+  const airportMarkersRef = useRef(new Map());
+  const [pendingMarker, setPendingMarker] = useState(null);
+  const [pendingAirportKey, setPendingAirportKey] = useState(null);
   const [editingDayTitle, setEditingDayTitle] = useState(false);
   const [dayTitleValue, setDayTitleValue] = useState('');
   const [tripForm, setTripForm] = useState({
@@ -377,17 +381,67 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
 
   // Create a stable reference for map dependencies
   const mapDependencyKey = useMemo(() => {
-    if (!selectedDayData?.places) return '';
-    return JSON.stringify(
-      selectedDayData.places.map(p => ({
+    const placesKey = (selectedDayData?.places || []).map(p => ({
         id: p.id,
         address: p.address,
         // Ensure consistent property order for location
         location: p.location ? { lat: p.location.lat, lng: p.location.lng } : null,
         transportMode: p.transportMode
-      }))
-    );
-  }, [selectedDayData]);
+      }));
+    const flightsKey = flightsForSelectedDay.map(f => ({
+      id: f.id,
+      from: f.from,
+      to: f.to
+    }));
+    return JSON.stringify({ day: selectedDayData?.id, placesKey, flightsKey });
+  }, [selectedDayData, flightsForSelectedDay]);
+
+  const focusPlaceOnMap = (placeId) => {
+    if (!placeId) return;
+    const idx = selectedDayData?.places.findIndex(p => p.id === placeId);
+    if (idx === -1 || idx === undefined) return;
+
+    if (!showMapPanel) {
+      setShowMapPanel(true);
+    }
+
+    const marker = markersRef.current[idx];
+    if (marker && window.google?.maps?.event) {
+      window.google.maps.event.trigger(marker, 'click');
+      const pos = marker.position || (typeof marker.getPosition === 'function' ? marker.getPosition() : null);
+      if (pos && mapInstanceRef.current?.panTo) {
+        mapInstanceRef.current.panTo(pos);
+      }
+      setPendingMarker(null);
+    } else {
+      setPendingMarker({ placeId, markerIndex: idx });
+    }
+  };
+
+  const getAirportMarkerKey = (flightId, label) => `${flightId}-${label.toLowerCase()}`;
+
+  const focusAirportOnMap = (flight) => {
+    if (!flight) return;
+    if (!showMapPanel) {
+      setShowMapPanel(true);
+    }
+    const preferred = flight.to ? 'Arrival' : (flight.from ? 'Departure' : null);
+    const fallback = flight.from ? 'Departure' : null;
+    const key = getAirportMarkerKey(flight.id, preferred) || (fallback ? getAirportMarkerKey(flight.id, fallback) : null);
+    if (!key) return;
+
+    const marker = airportMarkersRef.current.get(key);
+    if (marker && window.google?.maps?.event) {
+      window.google.maps.event.trigger(marker, 'click');
+      const pos = marker.position || (typeof marker.getPosition === 'function' ? marker.getPosition() : null);
+      if (pos && mapInstanceRef.current?.panTo) {
+        mapInstanceRef.current.panTo(pos);
+      }
+      setPendingAirportKey(null);
+    } else {
+      setPendingAirportKey(key);
+    }
+  };
 
   // If an initialTrip was provided (created just now) and the
   // useCurrentTrip hook hasn't reflected it yet, save it so that
@@ -671,6 +725,7 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
   const [hotelImagePreview, setHotelImagePreview] = useState('');
   const [hotelExtracting, setHotelExtracting] = useState(false);
   const [hotelExtractError, setHotelExtractError] = useState('');
+  const [hotelPriceOptions, setHotelPriceOptions] = useState([]);
 
   // Place form state
   const [placeForm, setPlaceForm] = useState({
@@ -948,17 +1003,63 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
     }
   };
 
-  const normalizeHotelPayload = (payload = {}) => ({
-    name: payload.name || payload.hotelName || '',
-    address: payload.address || '',
-    city: payload.city || '',
-    state: payload.state || '',
-    country: payload.country || '',
-    checkIn: payload.checkIn || payload.checkInDate || '',
-    checkOut: payload.checkOut || payload.checkOutDate || '',
-    price: payload.price || payload.value || '',
-    priceCurrency: payload.priceCurrency || payload.currency || parseCurrencyFromPrice(payload.price || payload.value) || 'USD'
-  });
+  const normalizeHotelPayload = (payload = {}) => {
+    const candidates = [];
+    const pushAmount = (label, value) => {
+      if (!value) return;
+      const valStr = String(value).trim();
+      if (!valStr) return;
+      candidates.push({ label, value: valStr });
+    };
+
+    const totalPrice =
+      payload.total ||
+      payload.totalPrice ||
+      payload.total_price ||
+      payload.totalAmount ||
+      payload.total_amount ||
+      payload.totalWithTaxes ||
+      payload.total_with_taxes ||
+      payload.grandTotal ||
+      payload.subtotal ||
+      payload.price ||
+      payload.value ||
+      '';
+
+    pushAmount('Total', payload.total || payload.totalPrice || payload.total_price || payload.totalWithTaxes || payload.total_with_taxes || payload.grandTotal);
+    pushAmount('Subtotal', payload.subtotal);
+    pushAmount('Nightly', payload.nightlyRate || payload.nightly_rate);
+    pushAmount('Fees', payload.fees || payload.fee);
+    pushAmount('Taxes', payload.taxes || payload.tax);
+    pushAmount('Deposit', payload.deposit);
+    pushAmount('Other', payload.price || payload.value);
+
+    if (Array.isArray(payload.amounts)) {
+      payload.amounts.forEach((item) => {
+        if (item && item.value) {
+          pushAmount(item.label || 'Amount', item.value);
+        }
+      });
+    }
+
+    const currencyGuess = payload.priceCurrency
+      || payload.currency
+      || parseCurrencyFromPrice(totalPrice || payload.price || payload.value)
+      || 'USD';
+
+    return {
+      name: payload.name || payload.hotelName || '',
+      address: payload.address || '',
+      city: payload.city || '',
+      state: payload.state || '',
+      country: payload.country || '',
+      checkIn: payload.checkIn || payload.checkInDate || '',
+      checkOut: payload.checkOut || payload.checkOutDate || '',
+      price: totalPrice,
+      priceCurrency: currencyGuess,
+      amounts: candidates
+    };
+  };
 
   const extractHotelWithGemini = async ({ base64Data, mimeType }) => {
     const apiKey = (import.meta.env.VITE_GEMINI_API_KEY || '').trim();
@@ -967,7 +1068,7 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
     }
     const model = (import.meta.env.VITE_GEMINI_MODEL || 'gemini-2.5-flash-lite').trim();
     const apiVersion = (import.meta.env.VITE_GEMINI_API_VERSION || 'v1').trim();
-    const prompt = 'Extract hotel booking details. Return ONLY a JSON object with keys: name (hotel name), address, city, state, country, checkIn (YYYY-MM-DD), checkOut (YYYY-MM-DD), price (numeric or string with currency), priceCurrency (3-letter ISO). Use empty strings when missing.';
+    const prompt = 'Extract hotel booking details. Return ONLY a JSON object with keys: name (hotel name), address, city, state, country, checkIn (YYYY-MM-DD), checkOut (YYYY-MM-DD), total (overall total amount including taxes/fees), priceCurrency (3-letter ISO), and amounts (array of {label,value} for any monetary values you see such as total, grand total, subtotal, nightly, fees, taxes, deposits). Prefer the overall total even if individual fees/taxes are listed. Use empty strings when missing.';
     const response = await fetch(`https://generativelanguage.googleapis.com/${apiVersion}/models/${model}:generateContent?key=${apiKey}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1004,6 +1105,7 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
     });
     setHotelExtractError('');
     setHotelExtracting(true);
+    setHotelPriceOptions([]);
     if (file.type?.startsWith('image/')) {
       setHotelImagePreview(URL.createObjectURL(file));
     } else {
@@ -1013,6 +1115,7 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
     try {
       const base64Data = await readFileAsBase64(file);
       const extracted = await extractHotelWithGemini({ base64Data, mimeType: file.type });
+      setHotelPriceOptions(extracted.amounts || []);
       setHotelForm(prev => ({
         ...prev,
         ...extracted
@@ -1023,6 +1126,24 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
     } finally {
       setHotelExtracting(false);
     }
+  };
+
+  const handleRemoveHotelFile = () => {
+    setHotelDocPreview(null);
+    setHotelImagePreview('');
+    setHotelExtractError('');
+    setHotelPriceOptions([]);
+    setHotelForm({
+      name: '',
+      address: '',
+      city: '',
+      state: '',
+      country: '',
+      checkIn: '',
+      checkOut: '',
+      price: '',
+      priceCurrency: 'USD'
+    });
   };
 
   const handleHotelPaste = async (event) => {
@@ -1882,12 +2003,66 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
     markersRef.current = [];
     directionsRenderersRef.current.forEach(r => r.setMap(null));
     directionsRenderersRef.current = [];
+    airportMarkersRef.current.forEach((m) => {
+      if (typeof m.setMap === 'function') {
+        m.setMap(null);
+      } else if (m) {
+        m.map = null;
+      }
+    });
+    airportMarkersRef.current = new Map();
 
-    if (!selectedDayData || !selectedDayData.places?.length) return;
+    if (!selectedDayData || (!selectedDayData.places?.length && flightsForSelectedDay.length === 0)) return;
 
     const bounds = new window.google.maps.LatLngBounds();
     let cancelled = false;
     setMapLoading(true);
+    const geocoder = new window.google.maps.Geocoder();
+
+    const geocodeWithCache = (query) => {
+      if (!query) return Promise.resolve(null);
+
+      // Build a small list of attempts (handles IATA codes like "CDG" and names without "airport")
+      const normalized = String(query).trim();
+      const base = normalized.toUpperCase();
+      const attempts = new Set();
+      attempts.add(normalized);
+      attempts.add(`${normalized} airport`);
+      attempts.add(`${normalized} international airport`);
+      attempts.add(base);
+      if (base.length === 3) {
+        attempts.add(`${base} airport`);
+        attempts.add(`${base} international airport`);
+      }
+
+      const tryGeocode = (addrList) => {
+        if (!addrList.length) return Promise.resolve(null);
+        const [addr, ...rest] = addrList;
+        const key = addr.toLowerCase();
+        const cached = geocodeCacheRef.current.get(key);
+        if (cached) {
+          return Promise.resolve(new window.google.maps.LatLng(cached.lat, cached.lng));
+        }
+        return new Promise(resolve => {
+          geocoder.geocode({ address: addr }, (results, status) => {
+            if (cancelled) return resolve(null);
+            if (status === 'OK' && results[0]) {
+              const loc = results[0].geometry.location;
+              const payload = { lat: loc.lat(), lng: loc.lng() };
+              geocodeCacheRef.current.set(key, payload);
+              resolve(new window.google.maps.LatLng(payload.lat, payload.lng));
+            } else {
+              resolve(null);
+            }
+          });
+        }).then((res) => {
+          if (res) return res;
+          return tryGeocode(rest);
+        });
+      };
+
+      return tryGeocode([...attempts]);
+    };
 
     const plotPlace = (place, index) => new Promise(resolve => {
       const position = place.location && typeof place.location.lat === 'number' && typeof place.location.lng === 'number'
@@ -2036,18 +2211,64 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
 
       const target = place.address || place.name;
       if (!target) return resolve(null);
-      const geocoder = new window.google.maps.Geocoder();
-      geocoder.geocode({ address: target }, (results, status) => {
-        if (cancelled) return resolve(null);
-        if (status === 'OK' && results[0]) {
-          handleMarker(results[0].geometry.location);
-        } else {
-          resolve(null);
-        }
+      geocodeWithCache(target).then((pos) => {
+        if (cancelled || !pos) return resolve(null);
+        handleMarker(pos);
       });
     });
 
-    Promise.all(selectedDayData.places.map((place, index) => plotPlace(place, index))).then((positions) => {
+    const airportTargets = flightsForSelectedDay.flatMap((flight) => {
+      const list = [];
+      if (flight.from) list.push({ airport: flight.from, label: 'Departure', flightId: flight.id });
+      if (flight.to) list.push({ airport: flight.to, label: 'Arrival', flightId: flight.id });
+      return list;
+    });
+
+    const plotAirport = ({ airport, label, flightId }) => new Promise(resolve => {
+      const query = airport.toLowerCase().includes('airport') ? airport : `${airport} airport`;
+      geocodeWithCache(query).then((pos) => {
+        if (cancelled || !pos) return resolve(null);
+
+        const iconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="%230b6559" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 19h19"/><path d="M17 14.5V19"/><path d="M5 10L2 7.5"/><path d="M22 7.5L19 10"/><path d="M7.5 11l.5 8"/><path d="M16 19.5V11"/><path d="M12 19.5V3l3 2v4l7 2-1 3-6-1.5V19"/></svg>`;
+
+        const marker = new window.google.maps.Marker({
+          map: mapInstanceRef.current,
+          position: pos,
+          title: `${label} Airport: ${airport}`,
+          icon: {
+            url: `data:image/svg+xml;utf-8,${encodeURIComponent(iconSvg)}`,
+            scaledSize: new window.google.maps.Size(28, 28),
+            anchor: new window.google.maps.Point(14, 20)
+          },
+          label: {
+            text: label === 'Departure' ? 'DEP' : 'ARR',
+            color: '#0b6559',
+            fontSize: '11px',
+            fontWeight: '700'
+          }
+        });
+        const info = new window.google.maps.InfoWindow({
+          content: `<div style="font-family:system-ui,-apple-system,sans-serif;font-size:12px;color:#1f2937;"><strong>${label} Airport</strong><div style="color:#4b5563;">${airport}</div></div>`
+        });
+        marker.addListener('click', () => {
+          if (currentInfoWindowRef.current) {
+            currentInfoWindowRef.current.close();
+          }
+          info.open({ anchor: marker, map: mapInstanceRef.current });
+          currentInfoWindowRef.current = info;
+        });
+
+        airportMarkersRef.current.set(getAirportMarkerKey(flightId, label), marker);
+        markersRef.current.push(marker);
+        bounds.extend(pos);
+        resolve(pos);
+      });
+    });
+
+    const placePromise = Promise.all((selectedDayData.places || []).map((place, index) => plotPlace(place, index)));
+    const airportPromise = Promise.all(airportTargets.map((t) => plotAirport(t)));
+
+    Promise.all([placePromise, airportPromise]).then(([positions]) => {
       if (cancelled) return;
 
       // Draw routes between consecutive places
@@ -2101,6 +2322,39 @@ const TravelPlanner = ({ initialTrip = null, onExitTrip = () => {}, onEnterDayMo
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showMapPanel, mapsReady, mapDependencyKey]);
+
+  // Trigger a pending marker click once markers are ready
+  useEffect(() => {
+    if (!pendingMarker || !showMapPanel) return;
+    const idx = selectedDayData?.places.findIndex(p => p.id === pendingMarker.placeId);
+    if (idx === -1 || idx === undefined) {
+      setPendingMarker(null);
+      return;
+    }
+    const marker = markersRef.current[idx];
+    if (marker && window.google?.maps?.event) {
+      window.google.maps.event.trigger(marker, 'click');
+      const pos = marker.position || (typeof marker.getPosition === 'function' ? marker.getPosition() : null);
+      if (pos && mapInstanceRef.current?.panTo) {
+        mapInstanceRef.current.panTo(pos);
+      }
+      setPendingMarker(null);
+    }
+  }, [pendingMarker, showMapPanel, selectedDayData, mapDependencyKey]);
+
+  // Trigger pending airport marker once ready
+  useEffect(() => {
+    if (!pendingAirportKey || !showMapPanel) return;
+    const marker = airportMarkersRef.current.get(pendingAirportKey);
+    if (marker && window.google?.maps?.event) {
+      window.google.maps.event.trigger(marker, 'click');
+      const pos = marker.position || (typeof marker.getPosition === 'function' ? marker.getPosition() : null);
+      if (pos && mapInstanceRef.current?.panTo) {
+        mapInstanceRef.current.panTo(pos);
+      }
+      setPendingAirportKey(null);
+    }
+  }, [pendingAirportKey, showMapPanel, mapDependencyKey]);
 
   // Close transport mode dropdown when clicking outside
   useEffect(() => {
@@ -3056,7 +3310,11 @@ const renderExpenseIcon = (category, size = 14) => {
                             : (flight.from || flight.to || 'Flight');
 
                           return (
-                            <div key={`flight-${flight.id}`} className="rounded-xl bg-white border border-gray-200 shadow-sm px-3 py-2 flex items-center justify-between">
+                            <div
+                              key={`flight-${flight.id}`}
+                              onClick={() => focusAirportOnMap(flight)}
+                              className="rounded-xl bg-white border border-gray-200 shadow-sm px-3 py-2 flex items-center justify-between cursor-pointer hover:shadow-md hover:-translate-y-0.5 transition-all"
+                            >
                               <div className="flex items-center gap-2 min-w-0">
                                 <div className="w-9 h-9 rounded-lg bg-[#4ECDC4]/10 flex items-center justify-center text-[#0b6559]">
                                   <Plane size={16} />
@@ -3436,18 +3694,8 @@ const renderExpenseIcon = (category, size = 14) => {
                             onDrop={(e) => handleDrop(e, selectedDay, place.id)}
                             onDragEnd={handleDragEnd}
                             onClick={() => {
-                              // Don't trigger click if we're dragging
                               if (isDragging) return;
-
-                              // Trigger the corresponding map marker
-                              const markerIndex = selectedDayData.places.findIndex(p => p.id === place.id);
-                              if (markerIndex !== -1 && markersRef.current[markerIndex]) {
-                                window.google.maps.event.trigger(markersRef.current[markerIndex], 'click');
-                                // Ensure map panel is visible
-                                if (!showMapPanel) {
-                                  setShowMapPanel(true);
-                                }
-                              }
+                              focusPlaceOnMap(place.id);
                             }}
                             className={`flex-1 transition-all ring-1 ring-transparent ${
                               isCompactType(place.type)
@@ -3476,10 +3724,10 @@ const renderExpenseIcon = (category, size = 14) => {
                                   <button
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      openInGoogleMaps(place.address || place.name);
+                                      focusPlaceOnMap(place.id);
                                     }}
                                     className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg"
-                                    title="Open in Google Maps"
+                                    title="Show on map"
                                   >
                                     <MapIcon size={16} />
                                   </button>
@@ -4039,10 +4287,10 @@ const renderExpenseIcon = (category, size = 14) => {
                                   <button
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      openInGoogleMaps(place.address);
+                                      focusPlaceOnMap(place.id);
                                     }}
                                 className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"
-                                title="Open in Google Maps"
+                                title="Show on map"
                               >
                                 <MapIcon size={18} />
                               </button>
@@ -4439,6 +4687,37 @@ const renderExpenseIcon = (category, size = 14) => {
                               <FileText size={14} className="text-[#4ECDC4]" />
                               <span>{hotelDocPreview.name}</span>
                               <span className="text-gray-400">({hotelDocPreview.type})</span>
+                              <button
+                                type="button"
+                                onClick={handleRemoveHotelFile}
+                                className="ml-1 inline-flex items-center justify-center rounded-full border border-red-200 text-red-500 hover:bg-red-50 w-6 h-6"
+                                title="Remove file"
+                              >
+                                <X size={12} />
+                              </button>
+                            </div>
+                          )}
+
+                          {hotelPriceOptions.length > 0 && !hotelForm.price && (
+                            <div className="border border-amber-200 bg-amber-50 rounded-lg p-3 space-y-2">
+                              <div className="text-sm font-semibold text-amber-800">Pick the total</div>
+                              <div className="flex flex-wrap gap-2">
+                                {hotelPriceOptions.map((opt, idx) => (
+                                  <button
+                                    key={`${opt.label}-${idx}`}
+                                    type="button"
+                                    onClick={() => setHotelForm(prev => ({
+                                      ...prev,
+                                      price: opt.value,
+                                      priceCurrency: parseCurrencyFromPrice(opt.value) || prev.priceCurrency
+                                    }))}
+                                    className="px-3 py-1.5 rounded-lg border border-amber-200 bg-white text-sm text-amber-800 hover:border-amber-300 hover:-translate-y-0.5 transition-all shadow-sm"
+                                  >
+                                    {opt.label ? `${opt.label}: ` : ''}{opt.value}
+                                  </button>
+                                ))}
+                              </div>
+                              <div className="text-xs text-amber-700">We couldn&apos;t identify a single total; please choose the correct amount.</div>
                             </div>
                           )}
 
